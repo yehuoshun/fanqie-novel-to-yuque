@@ -119,12 +119,19 @@ def main():
             save_progress({"completed": list(completed_set), "failed": list(failed_set)})
             continue
         
-        if not text or len(text) < 100:
-            print(f"❌ 内容过短", flush=True)
+        if not text or len(text) < 500:
+            print(f"❌ 内容过短 ({len(text) if text else 0}字)", flush=True)
             failed_set.add(title)
             new_failed += 1
             save_progress({"completed": list(completed_set), "failed": list(failed_set)})
             continue
+        
+        # Verify content completeness: expected ~2000+ chars per chapter
+        content_len = len(text)
+        if content_len < 1000:
+            print(f"⚠️ 字数偏少 ({content_len}字)", flush=True)
+        elif content_len < 1500:
+            print(f"📏 字数略少 ({content_len}字)", end=' ', flush=True)
         
         body = f"# {title}\n\n{text}"
         
