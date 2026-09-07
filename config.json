@@ -6,5 +6,9 @@
   "mcp_client": "/tmp/yuque_mcp_client.js",
   "min_content_length": 500,
   "warning_content_length": 1000,
-  "api_interval": 0.5
+  "api_interval": 0.5,
+  "yuque_config": {
+    "stack_id": 26774009,
+    "user_login": "yehuoshun"
+  }
 }
