@@ -8,10 +8,28 @@ import os
 import time
 import base64
 
-API_BASE = "http://101.35.133.34:5000"
-BOOK_ID = "83238767"
-PROGRESS_FILE = "/tmp/novel_v2_progress.json"
-MCP_CLIENT = "/tmp/yuque_mcp_client.js"
+# --- 配置加载 ---
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+
+def load_config():
+    with open(CONFIG_PATH, 'r') as f:
+        cfg = json.load(f)
+    # 环境变量覆盖（优先级最高）
+    if os.environ.get('BOOK_ID'):
+        cfg['book_id'] = os.environ['BOOK_ID']
+    if os.environ.get('API_BASE'):
+        cfg['api_base'] = os.environ['API_BASE']
+    return cfg
+
+CONFIG = load_config()
+API_BASE = CONFIG['api_base']
+BOOK_ID = CONFIG['book_id']
+PROGRESS_FILE = CONFIG['progress_file']
+MCP_CLIENT = CONFIG['mcp_client']
+CHAPTER_LIST = CONFIG['chapter_list']
+MIN_CONTENT_LEN = CONFIG.get('min_content_length', 500)
+WARN_CONTENT_LEN = CONFIG.get('warning_content_length', 1000)
+API_INTERVAL = CONFIG.get('api_interval', 0.5)
 
 def fetch_text(url, timeout=15):
     """Fetch plain text from a URL"""
@@ -84,7 +102,7 @@ def save_progress(progress):
         json.dump(progress, f)
 
 def main():
-    with open('/tmp/chapter_list.json', 'r', encoding='utf-8') as f:
+    with open(CHAPTER_LIST, 'r', encoding='utf-8') as f:
         chapters = json.load(f)
     
     real_chapters = [(t, u) for t, u in chapters if t.startswith('第') and '章' in t]
@@ -119,7 +137,7 @@ def main():
             save_progress({"completed": list(completed_set), "failed": list(failed_set)})
             continue
         
-        if not text or len(text) < 500:
+        if not text or len(text) < MIN_CONTENT_LEN:
             print(f"❌ 内容过短 ({len(text) if text else 0}字)", flush=True)
             failed_set.add(title)
             new_failed += 1
@@ -128,7 +146,7 @@ def main():
         
         # Verify content completeness: expected ~2000+ chars per chapter
         content_len = len(text)
-        if content_len < 1000:
+        if content_len < WARN_CONTENT_LEN:
             print(f"⚠️ 字数偏少 ({content_len}字)", flush=True)
         elif content_len < 1500:
             print(f"📏 字数略少 ({content_len}字)", end=' ', flush=True)
@@ -157,7 +175,7 @@ def main():
         if (new_success + new_failed) % 5 == 0:
             save_progress({"completed": list(completed_set), "failed": list(failed_set)})
         
-        time.sleep(0.5)
+        time.sleep(API_INTERVAL)
     
     save_progress({"completed": list(completed_set), "failed": list(failed_set)})
     

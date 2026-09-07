@@ -1,0 +1,10 @@
+{
+  "book_id": "83238767",
+  "api_base": "http://101.35.133.34:5000",
+  "progress_file": "/tmp/novel_v2_progress.json",
+  "chapter_list": "/tmp/chapter_list.json",
+  "mcp_client": "/tmp/yuque_mcp_client.js",
+  "min_content_length": 500,
+  "warning_content_length": 1000,
+  "api_interval": 0.5
+}
