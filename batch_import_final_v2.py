@@ -57,7 +57,7 @@ def get_chapter_content(item_id):
             t = re.sub(r'&amp;', '&', t)
             t = t.strip()
             if t:
-                lines.append(f"&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;{t}")
+                lines.append(f"&emsp;&emsp;{t}")
             else:
                 lines.append("")
         return '\n'.join(lines)
