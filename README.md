@@ -30,9 +30,30 @@ GET http://101.35.133.34:5000/api/raw_full?item_id={item_id}
 
 ## 使用流程
 
-### 批量导入
+### 完整工作流（推荐）
+自动创建语雀知识库 → 移动到小说分组 → 生成章节列表 → 批量导入
+
+```bash
+# 先安装依赖
+pip install requests
+
+# 执行完整流程
+python3 yuque_import_workflow.py \
+    --book-id 7220383810771225655 \
+    --title "穿越三年，你就给我这个破系统？" \
+    --alias "不对劲！我这修仙系统有毒！" \
+    --author "暗影玩具车" \
+    --description "作品简介原文"
+```
+
+### 仅导入已有知识库
 ```bash
 python3 batch_import_final_v2.py
+```
+
+### 仅创建知识库
+```bash
+python3 yuque_import_workflow.py --book-id ... --title ... --author ... --skip-import
 ```
 
 ### 单章测试
@@ -45,9 +66,10 @@ curl -s "http://101.35.133.34:5000/api/raw_full?item_id=7423810901096006206"
 | 文件 | 用途 |
 |------|------|
 | `batch_import_final_v2.py` | 批量导入主脚本（Python） |
+| `yuque_import_workflow.py` | 完整工作流脚本（创建知识库+移动分组+导入章节） |
 | `yuque_mcp_client.js` | MCP 客户端（Node.js，直接调用 yuque-mcp 服务器） |
 | `yuque_pipe.sh` | Shell 管道包装器（备选方案） |
-| `config.json` | 配置文件（`book_id`、`api_base` 等） |
+| `config.json` | 配置文件（`book_id`、`api_base`、`yuque_config` 等） |
 
 ## 注意事项
 
