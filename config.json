@@ -1,14 +1,13 @@
 {
-  "book_id": "83243566",
+  "yuque_repo_id": "83243566",
   "api_base": "http://101.35.133.34:5000",
-  "progress_file": "/tmp/novel_v2_progress.json",
+  "progress_file": "progress/novel_v2_progress.json",
   "chapter_list": "/tmp/chapter_list.json",
   "min_content_length": 500,
   "warning_content_length": 1000,
   "api_interval": 0.5,
   "yuque_config": {
-    "stack_id": 26774009,
     "user_login": "yehuoshun"
   },
-  "_note": "book_id 是语雀知识库 ID（数字），不是番茄小说的 book_id。番茄 book_id 通过环境变量 BOOK_ID 传入。"
+  "_note": "yuque_repo_id 是语雀知识库 ID（数字）。番茄 book_id 通过环境变量 BOOK_ID 传入。stack_id 已硬编码为 26774009（小说分组）。"
 }

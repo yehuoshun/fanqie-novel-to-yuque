@@ -15,15 +15,16 @@ def load_config():
         cfg = json.load(f)
     # 环境变量覆盖（优先级最高）
     if os.environ.get('BOOK_ID'):
-        cfg['book_id'] = os.environ['BOOK_ID']
+        cfg['yuque_repo_id'] = os.environ['BOOK_ID']
     if os.environ.get('API_BASE'):
         cfg['api_base'] = os.environ['API_BASE']
     return cfg
 
 CONFIG = load_config()
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 API_BASE = CONFIG['api_base']
-BOOK_ID = CONFIG['book_id']
-PROGRESS_FILE = CONFIG['progress_file']
+BOOK_ID = CONFIG['yuque_repo_id']
+PROGRESS_FILE = os.path.join(PROJECT_DIR, CONFIG['progress_file'])
 CHAPTER_LIST = CONFIG['chapter_list']
 MIN_CONTENT_LEN = CONFIG.get('min_content_length', 500)
 WARN_CONTENT_LEN = CONFIG.get('warning_content_length', 1000)

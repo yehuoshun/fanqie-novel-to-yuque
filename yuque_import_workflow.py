@@ -51,8 +51,8 @@ def mcporter_call(tool, args_dict):
     return json.loads(output) if output else {}
 
 
-def create_repo(name, description, stack_id=None):
-    """通过 MCP 创建语雀知识库"""
+def create_repo(name, description):
+    """通过 MCP 创建语雀知识库，直接放入小说分组"""
     cfg = load_config()
     login = cfg.get('yuque_config', {}).get('user_login', 'yehuoshun')
 
@@ -62,9 +62,8 @@ def create_repo(name, description, stack_id=None):
         'description': description,
         'type': 'Book',
         'public': 0,
+        'stack_id': 26774009,  # 小说分组，固定值
     }
-    if stack_id:
-        payload['stack_id'] = stack_id
 
     data = mcporter_call('yuque_create_repo', payload)
     repo_id = data.get('id')
@@ -73,19 +72,6 @@ def create_repo(name, description, stack_id=None):
         return None
     print(f"✅ 知识库已创建: id={repo_id}, name={data.get('name','')}")
     return repo_id
-
-
-def move_to_stack(book_id, stack_id):
-    """通过 MCP 移动知识库到指定分组"""
-    data = mcporter_call('yuque_update_book_stack', {
-        'book_id': book_id,
-        'stack_id': stack_id
-    })
-    if data.get('success'):
-        print(f"✅ 已移动到分组 (stack_id={stack_id})")
-        return True
-    print(f"⚠️ 移动到分组失败: {str(data)[:200]}")
-    return False
 
 
 def curl_get(url, timeout=15):
@@ -186,19 +172,17 @@ def main():
 
     cfg = load_config()
     login = cfg.get('yuque_config', {}).get('user_login', 'yehuoshun')
-    stack_id = cfg.get('yuque_config', {}).get('stack_id', 26774009)
 
     # Step 1: 创建知识库
     if not args.skip_create:
-        # 创建 + 直接放入小说分组（stack_id 传进去）
-        repo_id = create_repo(repo_name, args.description, stack_id)
+        repo_id = create_repo(repo_name, args.description)
         if repo_id:
-            cfg['book_id'] = str(repo_id)
+            cfg['yuque_repo_id'] = str(repo_id)
             save_config(cfg)
-            print(f"✅ config.json book_id 已更新为 {repo_id}")
+            print(f"✅ config.json yuque_repo_id 已更新为 {repo_id}")
     else:
-        repo_id = cfg.get('book_id')
-        print(f"ℹ️ 跳过创建，使用 config 中的 book_id: {repo_id}")
+        repo_id = cfg.get('yuque_repo_id')
+        print(f"ℹ️ 跳过创建，使用 config 中的 yuque_repo_id: {repo_id}")
 
     # Step 2: 生成章节列表
     chapter_path = generate_chapter_list(args.book_id)
@@ -219,7 +203,7 @@ def main():
 
     print()
     print("📍 知识库地址:")
-    print(f"   https://www.yuque.com/{login}/{cfg.get('book_id', '')}")
+    print(f"   https://www.yuque.com/{login}/{cfg.get('yuque_repo_id', '')}")
 
 
 if __name__ == '__main__':
