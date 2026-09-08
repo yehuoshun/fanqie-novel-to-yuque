@@ -35,7 +35,7 @@ GET http://101.35.133.34:5000/api/raw_full?item_id={item_id}
 
 ```bash
 # 先安装依赖
-pip install requests
+无需额外安装，依赖 mcporter + yuque-mcp
 
 # 执行完整流程
 python3 yuque_import_workflow.py \
