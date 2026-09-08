@@ -196,8 +196,8 @@ def main():
     with open(CHAPTER_LIST, 'r', encoding='utf-8') as f:
         chapters = json.load(f)
     
-    real_chapters = [(t, u) for t, u in chapters if t.startswith('第') and '章' in t]
-    total = len(real_chapters)
+    # 不过滤，导入全部章节（含番外、女频等）
+    total = len(chapters)
     
     progress = load_progress()
     completed_set = set(progress.get("completed", []))
@@ -210,7 +210,7 @@ def main():
     new_success = 0
     new_failed = 0
     
-    for i, (title, url) in enumerate(real_chapters, 1):
+    for i, (title, url) in enumerate(chapters, 1):
         if title in completed_set:
             continue
         

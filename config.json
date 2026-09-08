@@ -9,5 +9,6 @@
   "yuque_config": {
     "stack_id": 26774009,
     "user_login": "yehuoshun"
-  }
+  },
+  "_note": "book_id 是语雀知识库 ID（数字），不是番茄小说的 book_id。番茄 book_id 通过环境变量 BOOK_ID 传入。"
 }
