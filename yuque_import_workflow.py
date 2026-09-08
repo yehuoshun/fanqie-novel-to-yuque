@@ -88,32 +88,64 @@ def move_to_stack(cookie, ctoken, book_id, stack_id):
 
 
 def generate_chapter_list(book_id):
-    """从番茄小说页面提取章节列表"""
-    url = f"https://fanqienovel.com/page/{book_id}"
+    """获取章节列表：API 返回 item_id 顺序，页面匹配标题，保留全部 768 章（含番外）"""
+    import re
     headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
-    resp = requests.get(url, headers=headers, timeout=15)
-    if resp.status_code != 200:
-        print(f"❌ 获取书籍页面失败 [{resp.status_code}]")
+    api_base = "http://101.35.133.34:5000"
+
+    # 1. 调 API 拿 allItemIds（按发布顺序排列，包含番外）
+    api_url = f"{api_base}/api/book?bookId={book_id}"
+    try:
+        resp = requests.get(api_url, timeout=15)
+        api_data = resp.json()
+        all_ids = api_data['data']['data']['allItemIds']
+    except Exception as e:
+        print(f"❌ API 获取章节列表失败: {e}")
         return None
 
-    import re
-    html = resp.text
-    chapters = []
+    print(f"📖 API 返回 {len(all_ids)} 个 item_id")
+
+    # 2. 爬页面拿标题 → item_id 映射
+    page_url = f"https://fanqienovel.com/page/{book_id}"
+    try:
+        resp = requests.get(page_url, headers=headers, timeout=15)
+        html = resp.text
+    except Exception as e:
+        print(f"❌ 获取书籍页面失败: {e}")
+        return None
+
+    title_map = {}  # item_id → title
     for m in re.finditer(r'href="/reader/(\d+)"[^>]*class="chapter-item-title"[^>]*>([^<]+)</a>', html):
         item_id = m.group(1)
         title = m.group(2).strip()
-        url = f"https://fanqienovel.com/reader/{item_id}"
-        if title.startswith('第') and '章' in title:
-            chapters.append((title, url))
+        title_map[item_id] = title
 
-    if not chapters:
-        print("❌ 未提取到章节（页面可能需 JS 渲染）")
+    if not title_map:
+        print("❌ 页面未提取到章节标题（可能需 JS 渲染）")
         return None
+
+    # 3. 按 API 顺序组装章节列表（保留全部，含番外）
+    chapters = []
+    missing_titles = 0
+    for item_id in all_ids:
+        title = title_map.get(item_id, f"[未命名-{item_id}]")
+        if not title_map.get(item_id):
+            missing_titles += 1
+        url = f"https://fanqienovel.com/reader/{item_id}"
+        chapters.append([title, url])
+
+    if missing_titles:
+        print(f"⚠️ {missing_titles} 个章节在页面未找到标题（可能已隐藏）")
+
+    # 4. 统计
+    regular = sum(1 for t, _ in chapters if t.startswith('第') and '章' in t)
+    extras = len(chapters) - regular
+    print(f"  正文: {regular} 章 | 番外: {extras} 章")
 
     chapter_path = '/tmp/chapter_list.json'
     with open(chapter_path, 'w', encoding='utf-8') as f:
         json.dump(chapters, f, ensure_ascii=False)
-    print(f"✅ 提取 {len(chapters)} 章 → {chapter_path}")
+    print(f"✅ 共 {len(chapters)} 章 → {chapter_path}")
     return chapter_path
 
 
