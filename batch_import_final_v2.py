@@ -40,30 +40,40 @@ def fetch_text(url, timeout=15):
     )
     return result.stdout
 
-def get_chapter_content(item_id):
-    """Get full chapter content from the API"""
-    raw = fetch_text(f"{API_BASE}/api/raw_full?item_id={item_id}")
-    try:
-        data = json.loads(raw)
-        content = data['data']['content']
-        # Extract text from HTML
-        texts = re.findall(r'<p[^>]*>(.*?)</p>', content, re.DOTALL)
-        # Add tab indentation (2 spaces per paragraph)
-        lines = []
-        for t in texts:
-            t = re.sub(r'<[^>]+>', '', t)
-            t = re.sub(r'&nbsp;', ' ', t)
-            t = re.sub(r'&lt;', '<', t)
-            t = re.sub(r'&gt;', '>', t)
-            t = re.sub(r'&amp;', '&', t)
-            t = t.strip()
-            if t:
-                lines.append(f"&emsp;&emsp;{t}")
-            else:
-                lines.append("")
-        return '\n'.join(lines)
-    except Exception as e:
-        return None
+def get_chapter_content(item_id, max_retries=3):
+    """Get full chapter content from the API，自动重试最多 3 次"""
+    for attempt in range(1, max_retries + 1):
+        raw = fetch_text(f"{API_BASE}/api/raw_full?item_id={item_id}")
+        try:
+            data = json.loads(raw)
+            content = data['data']['content']
+            # Extract text from HTML
+            texts = re.findall(r'<p[^>]*>(.*?)</p>', content, re.DOTALL)
+            # Add tab indentation (2 spaces per paragraph)
+            lines = []
+            for t in texts:
+                t = re.sub(r'<[^>]+>', '', t)
+                t = re.sub(r'&nbsp;', ' ', t)
+                t = re.sub(r'&lt;', '<', t)
+                t = re.sub(r'&gt;', '>', t)
+                t = re.sub(r'&amp;', '&', t)
+                t = t.strip()
+                if t:
+                    lines.append(f"&emsp;&emsp;{t}")
+                else:
+                    lines.append("")
+            result = '\n'.join(lines)
+            if result and len(result) >= MIN_CONTENT_LEN:
+                return result
+            # 内容为空或过短，重试
+            if attempt < max_retries:
+                print(f"重试第{attempt}次...", end='', flush=True)
+                time.sleep(2)
+        except Exception:
+            if attempt < max_retries:
+                print(f"重试第{attempt}次...", end='', flush=True)
+                time.sleep(2)
+    return None
 
 def reorder_toc():
     """批量导入完成后检查并修复 TOC 顺序（正文章节按号递增，番外放末尾）"""
