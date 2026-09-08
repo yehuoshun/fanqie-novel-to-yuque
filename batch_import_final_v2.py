@@ -6,7 +6,6 @@ import re
 import sys
 import os
 import time
-import base64
 
 # --- 配置加载 ---
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
@@ -25,11 +24,13 @@ CONFIG = load_config()
 API_BASE = CONFIG['api_base']
 BOOK_ID = CONFIG['book_id']
 PROGRESS_FILE = CONFIG['progress_file']
-MCP_CLIENT = CONFIG['mcp_client']
 CHAPTER_LIST = CONFIG['chapter_list']
 MIN_CONTENT_LEN = CONFIG.get('min_content_length', 500)
 WARN_CONTENT_LEN = CONFIG.get('warning_content_length', 1000)
 API_INTERVAL = CONFIG.get('api_interval', 0.5)
+
+# mcporter 需要从 workspace 根目录调用才能找到 yuque-mcp 配置
+MCP_WORKDIR = '/home/admin/.openclaw/workspace'
 
 def fetch_text(url, timeout=15):
     """Fetch plain text from a URL"""
@@ -65,17 +66,19 @@ def get_chapter_content(item_id):
         return None
 
 def create_yuque_doc(title, body):
-    payload = {
+    """通过 mcporter 调 yuque-mcp 创建文档，跳过脆弱的 JS 客户端管道"""
+    full_body = f"# {title}\n\n{body}"
+    args = json.dumps({
         "book_id": BOOK_ID,
         "title": title,
-        "body": body,
+        "body": full_body,
         "format": "markdown",
         "public": 0
-    }
-    b64 = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode('utf-8')).decode()
+    }, ensure_ascii=False)
     result = subprocess.run(
-        ['node', MCP_CLIENT, b64],
-        capture_output=True, text=True, timeout=30
+        ['mcporter', 'call', 'yuque-mcp.yuque_create_doc', '--args', args],
+        capture_output=True, text=True, timeout=30,
+        cwd=MCP_WORKDIR
     )
     output = result.stdout.strip()
     if not output:
@@ -83,10 +86,12 @@ def create_yuque_doc(title, body):
     try:
         data = json.loads(output)
         if isinstance(data, dict) and data.get('id'):
-            return data.get('id'), None
+            return data['id'], None
+        if isinstance(data, dict) and data.get('error'):
+            return None, str(data['error'])[:100]
         return None, str(data)[:100]
-    except json.JSONDecodeError as e:
-        return None, f"JSON: {output[:200]}"
+    except json.JSONDecodeError:
+        return None, f"parse: {output[:200]}"
 
 def load_progress():
     if os.path.exists(PROGRESS_FILE):
