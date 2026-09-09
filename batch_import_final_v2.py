@@ -154,11 +154,11 @@ def reorder_toc():
 
 def create_yuque_doc(title, body):
     """通过 mcporter 调 yuque-mcp 创建文档，跳过脆弱的 JS 客户端管道"""
-    full_body = f"# {title}\n\n{body}"
+    # body 已在调用处拼好「# title」标题，此处不再重复包装
     args = json.dumps({
         "book_id": BOOK_ID,
         "title": title,
-        "body": full_body,
+        "body": body,
         "format": "markdown",
         "public": 0
     }, ensure_ascii=False)

@@ -1,0 +1,6 @@
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 运行产生的进度文件（保留 progress/.gitkeep 占位）
+progress/*.json

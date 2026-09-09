@@ -140,12 +140,11 @@ def generate_chapter_list(book_id):
 
 
 def run_import():
-    """运行批量导入脚本"""
+    """运行批量导入脚本（长任务，不设短超时，流式透传进度）"""
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'batch_import_final_v2.py')
-    result = subprocess.run(['python3', script], capture_output=True, text=True, timeout=600)
-    print(result.stdout)
-    if result.stderr:
-        print("STDERR:", result.stderr[:500])
+    # 大书（1200+ 章）导入耗时可达 1 小时，capture_output 会缓冲且 timeout 会误杀，
+    # 改为直接透传 stdout/stderr，不设超时。
+    result = subprocess.run(['python3', script], text=True)
     return result.returncode == 0
 
 
