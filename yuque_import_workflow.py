@@ -84,7 +84,13 @@ def curl_get(url, timeout=15):
 
 
 def generate_chapter_list(book_id):
-    """获取章节列表：API 返回 item_id 顺序，页面匹配标题，保留全部 768 章（含番外）"""
+    """获取章节列表：API 返回 item_id 顺序，页面匹配标题，保留全部章节"""
+    # 每次新任务都清空上次的进度文件，防止污染
+    cfg = load_config()
+    progress_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), cfg.get('progress_file', 'progress/novel_v2_progress.json'))
+    if os.path.exists(progress_path):
+        os.remove(progress_path)
+        print(f"🧹 已清除旧进度文件: {progress_path}")
     # 1. 调 API 拿 allItemIds（按发布顺序排列，包含番外）
     api_url = f"{API_BASE}/api/book?bookId={book_id}"
     raw = curl_get(api_url)

@@ -58,6 +58,10 @@ def get_chapter_content(item_id, max_retries=3):
                 t = re.sub(r'&lt;', '<', t)
                 t = re.sub(r'&gt;', '>', t)
                 t = re.sub(r'&amp;', '&', t)
+                t = re.sub(r'&#34;', '"', t)
+                t = re.sub(r'&#39;', "'", t)
+                t = re.sub(r'&quot;', '"', t)
+                t = re.sub(r'&apos;', "'", t)
                 t = t.strip()
                 if t:
                     lines.append(f"&emsp;&emsp;{t}")
@@ -193,6 +197,19 @@ def save_progress(progress):
     with open(PROGRESS_FILE, 'w') as f:
         json.dump(progress, f)
 
+def _is_progress_contaminated(chapters, progress):
+    """检查进度文件是否被其他书的章节记录污染"""
+    completed = progress.get("completed", [])
+    if not completed:
+        return False
+    # 取当前章节列表所有标题建集合
+    current_titles = {t for t, _ in chapters}
+    # 取进度文件前 10 条，如果全部不在当前章节列表里 → 污染
+    sample = completed[:10]
+    matches = sum(1 for t in sample if t in current_titles)
+    return matches == 0
+
+
 def main():
     with open(CHAPTER_LIST, 'r', encoding='utf-8') as f:
         chapters = json.load(f)
@@ -201,6 +218,10 @@ def main():
     total = len(chapters)
     
     progress = load_progress()
+    if _is_progress_contaminated(chapters, progress):
+        print(f"🧹 进度文件被旧数据污染，已清空（旧记录 {len(progress.get('completed', []))} 条）")
+        progress = {"completed": [], "failed": []}
+        save_progress(progress)
     completed_set = set(progress.get("completed", []))
     failed_set = set(progress.get("failed", []))
     
