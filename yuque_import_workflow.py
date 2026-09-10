@@ -146,12 +146,34 @@ def generate_chapter_list(book_id):
 
 
 def run_import():
-    """运行批量导入脚本（长任务，不设短超时，流式透传进度）"""
+    """运行批量导入脚本，拆分为 200 章一批串行执行，避免单次 exec 超时"""
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'batch_import_final_v2.py')
-    # 大书（1200+ 章）导入耗时可达 1 小时，capture_output 会缓冲且 timeout 会误杀，
-    # 改为直接透传 stdout/stderr，不设超时。
-    result = subprocess.run(['python3', script], text=True)
-    return result.returncode == 0
+    
+    # 读章节列表确定总章数
+    chapter_list_path = '/tmp/chapter_list.json'
+    try:
+        with open(chapter_list_path, 'r', encoding='utf-8') as f:
+            chapters = json.load(f)
+        total = len(chapters)
+    except:
+        print("⚠️ 无法读取章节列表，串行单次运行")
+        result = subprocess.run(['python3', script], text=True)
+        return result.returncode == 0
+    
+    # 每批 200 章
+    BATCH = 200
+    success = True
+    for batch_start in range(1, total + 1, BATCH):
+        batch_end = min(batch_start + BATCH - 1, total)
+        print(f"\n📦 批次 [{batch_start}-{batch_end}/{total}]...")
+        result = subprocess.run(
+            ['python3', script, '--start', str(batch_start), '--end', str(batch_end)],
+            text=True, timeout=600  # 每批最多 10 分钟
+        )
+        if result.returncode != 0:
+            print(f"⚠️ 批次 [{batch_start}-{batch_end}] 返回码 {result.returncode}")
+            success = False
+    return success
 
 
 def main():

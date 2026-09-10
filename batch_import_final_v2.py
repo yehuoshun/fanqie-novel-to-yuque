@@ -121,38 +121,50 @@ def reorder_toc():
         print("✅ 顺序已正确")
         return
 
-    # 重建 TOC：先删所有节点，再按序追加
-    print(f"修复中 ({len(items)} 条目)...", end=' ', flush=True)
-
-    ops = []
-    for item in items:
-        ops.append({'action': 'removeNode', 'node_uuid': item['uuid']})
-    for item in sorted_items:
-        op = {
+    # 修复逆序节点：使用 prependNode 精确定位插入
+    # 修复逆序：分批重建尾部错乱节点
+    # 找出第一个逆序位置
+    first_wrong = None
+    for i in range(1, len(sorted_items)):
+        if sorted_items[i]['uuid'] != items[i]['uuid']:
+            first_wrong = i
+            break
+    
+    if first_wrong is None:
+        print("✅ 顺序已正确")
+        return
+    
+    print(f" 从位置 {first_wrong} 开始修复...", end=' ', flush=True)
+    
+    # 只重建从 first_wrong 到末尾的部分
+    tail = items[first_wrong:]
+    sorted_tail = sorted_items[first_wrong:]
+    
+    # 小批量删除（每次10个，避免超时）
+    for bs in range(0, len(tail), 10):
+        batch = tail[bs:bs+10]
+        ops = [{'action': 'removeNode', 'node_uuid': item['uuid']} for item in batch]
+        args = json.dumps({'book_id': BOOK_ID, 'ops': json.dumps(ops), 'confirm': 'RESTRUCTURE'}, ensure_ascii=False)
+        subprocess.run(
+            ['mcporter', 'call', 'yuque-mcp.yuque_batch_update_toc', '--args', args],
+            capture_output=True, text=True, timeout=30, cwd=MCP_WORKDIR
+        )
+    
+    # 逐条追加（可靠但慢，不过通常只需修少量节点）
+    for item in sorted_tail:
+        payload = {
+            'book_id': BOOK_ID,
             'action': 'appendNode',
             'action_mode': 'child',
             'type': 'DOC',
-            'title': item['title'],
-            'visible': 1
+            'doc_ids': json.dumps([item['doc_id']])
         }
-        if item.get('doc_id'):
-            op['doc_ids'] = json.dumps([item['doc_id']])
-        ops.append(op)
-
-    # 分批执行（每批 100 个操作，避免超时）
-    for batch_start in range(0, len(ops), 100):
-        batch = ops[batch_start:batch_start + 100]
-        batch_args = json.dumps({
-            'book_id': BOOK_ID,
-            'ops': json.dumps(batch),
-            'confirm': 'RESTRUCTURE'
-        }, ensure_ascii=False)
         subprocess.run(
-            ['mcporter', 'call', 'yuque-mcp.yuque_batch_update_toc', '--args', batch_args],
-            capture_output=True, text=True, timeout=120,
-            cwd=MCP_WORKDIR
+            ['mcporter', 'call', 'yuque-mcp.yuque_update_toc', '--args',
+             json.dumps(payload, ensure_ascii=False)],
+            capture_output=True, text=True, timeout=15, cwd=MCP_WORKDIR
         )
-
+    
     print("✅")
 
 
@@ -211,11 +223,21 @@ def _is_progress_contaminated(chapters, progress):
 
 
 def main():
+    # 解析命令行参数（范围模式）
+    import argparse
+    parser = argparse.ArgumentParser(description='批量导入番茄小说到语雀')
+    parser.add_argument('--start', type=int, default=1, help='起始章节（1-based）')
+    parser.add_argument('--end', type=int, default=0, help='结束章节（含），0=全部')
+    args = parser.parse_args()
+
     with open(CHAPTER_LIST, 'r', encoding='utf-8') as f:
         chapters = json.load(f)
     
-    # 不过滤，导入全部章节（含番外、女频等）
-    total = len(chapters)
+    total_all = len(chapters)
+    start_idx = args.start - 1  # 转0-based
+    end_idx = args.end if args.end > 0 else total_all
+    chapters_range = chapters[start_idx:end_idx]
+    total = len(chapters_range)
     
     progress = load_progress()
     if _is_progress_contaminated(chapters, progress):
@@ -225,18 +247,18 @@ def main():
     completed_set = set(progress.get("completed", []))
     failed_set = set(progress.get("failed", []))
     
-    print(f"共 {total} 章，已导入 {len(completed_set)} 章，失败 {len(failed_set)} 章", flush=True)
+    print(f"共 {total_all} 章，范围 {args.start}-{end_idx} ({total} 章)，已导入 {len(completed_set)} 章，失败 {len(failed_set)} 章", flush=True)
     print(f"开始批量导入...", flush=True)
     
     start_time = time.time()
     new_success = 0
     new_failed = 0
     
-    for i, (title, url) in enumerate(chapters, 1):
+    for abs_i, (title, url) in enumerate(chapters_range, args.start):
         if title in completed_set:
             continue
         
-        print(f"[{i}/{total}] {title}...", end=' ', flush=True)
+        print(f"[{abs_i}/{total_all}] {title}...", end=' ', flush=True)
         
         # Extract item_id from URL
         item_id = url.split('/reader/')[-1]
