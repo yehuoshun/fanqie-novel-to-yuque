@@ -80,93 +80,6 @@ def get_chapter_content(item_id, max_retries=3):
                 time.sleep(2)
     return None
 
-def reorder_toc():
-    """批量导入完成后检查并修复 TOC 顺序（正文章节按号递增，番外放末尾）"""
-    print("\n检查 TOC 顺序...", end=' ', flush=True)
-
-    # 获取当前 TOC
-    result = subprocess.run(
-        ['mcporter', 'call', 'yuque-mcp.yuque_get_toc', '--args',
-         json.dumps({'login': 'yehuoshun', 'book_id': BOOK_ID}, ensure_ascii=False)],
-        capture_output=True, text=True, timeout=30,
-        cwd=MCP_WORKDIR
-    )
-    try:
-        raw = json.loads(result.stdout.strip())
-        items = raw.get('data', raw) if isinstance(raw, dict) else raw
-    except (json.JSONDecodeError, KeyError):
-        print("❌ 获取 TOC 失败")
-        return
-
-    if not isinstance(items, list) or len(items) < 2:
-        print("跳过（TOC 条目不足）")
-        return
-
-    # 排序：正文章节按号递增，番外放末尾
-    def sort_key(item):
-        t = item['title']
-        m = re.match(r'第(\d+)章', t)
-        if m:
-            return (0, int(m.group(1)))
-        return (1, 0)
-
-    sorted_items = sorted(items, key=sort_key)
-
-    # 检查是否已有正确顺序
-    already_ordered = all(
-        sorted_items[i]['uuid'] == items[i]['uuid']
-        for i in range(len(items))
-    )
-    if already_ordered:
-        print("✅ 顺序已正确")
-        return
-
-    # 修复逆序节点：使用 prependNode 精确定位插入
-    # 修复逆序：分批重建尾部错乱节点
-    # 找出第一个逆序位置
-    first_wrong = None
-    for i in range(1, len(sorted_items)):
-        if sorted_items[i]['uuid'] != items[i]['uuid']:
-            first_wrong = i
-            break
-    
-    if first_wrong is None:
-        print("✅ 顺序已正确")
-        return
-    
-    print(f" 从位置 {first_wrong} 开始修复...", end=' ', flush=True)
-    
-    # 只重建从 first_wrong 到末尾的部分
-    tail = items[first_wrong:]
-    sorted_tail = sorted_items[first_wrong:]
-    
-    # 小批量删除（每次10个，避免超时）
-    for bs in range(0, len(tail), 10):
-        batch = tail[bs:bs+10]
-        ops = [{'action': 'removeNode', 'node_uuid': item['uuid']} for item in batch]
-        args = json.dumps({'book_id': BOOK_ID, 'ops': json.dumps(ops), 'confirm': 'RESTRUCTURE'}, ensure_ascii=False)
-        subprocess.run(
-            ['mcporter', 'call', 'yuque-mcp.yuque_batch_update_toc', '--args', args],
-            capture_output=True, text=True, timeout=30, cwd=MCP_WORKDIR
-        )
-    
-    # 逐条追加（可靠但慢，不过通常只需修少量节点）
-    for item in sorted_tail:
-        payload = {
-            'book_id': BOOK_ID,
-            'action': 'appendNode',
-            'action_mode': 'child',
-            'type': 'DOC',
-            'doc_ids': json.dumps([item['doc_id']])
-        }
-        subprocess.run(
-            ['mcporter', 'call', 'yuque-mcp.yuque_update_toc', '--args',
-             json.dumps(payload, ensure_ascii=False)],
-            capture_output=True, text=True, timeout=15, cwd=MCP_WORKDIR
-        )
-    
-    print("✅")
-
 
 def create_yuque_doc(title, body):
     """通过 mcporter 调 yuque-mcp 创建文档，跳过脆弱的 JS 客户端管道"""
@@ -307,8 +220,8 @@ def main():
             failed_set.add(title)
             new_failed += 1
         
-        if (new_success + new_failed) % 5 == 0:
-            save_progress({"completed": list(completed_set), "failed": list(failed_set)})
+        # 每章都保存进度，避免超时中断导致丢进度、续传重复创建
+        save_progress({"completed": list(completed_set), "failed": list(failed_set)})
         
         time.sleep(API_INTERVAL)
     
@@ -319,8 +232,7 @@ def main():
     print(f"总成功: {len(completed_set)}, 总失败: {len(failed_set)}", flush=True)
     print(f"耗时: {elapsed:.0f}s", flush=True)
 
-    # 全部完成后修复 TOC 顺序
-    reorder_toc()
+    # TOC 顺序由逐章创建自然保证，无需修复
 
 if __name__ == '__main__':
     main()

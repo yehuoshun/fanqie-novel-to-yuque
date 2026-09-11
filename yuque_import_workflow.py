@@ -166,9 +166,11 @@ def run_import():
     for batch_start in range(1, total + 1, BATCH):
         batch_end = min(batch_start + BATCH - 1, total)
         print(f"\n📦 批次 [{batch_start}-{batch_end}/{total}]...")
+        # timeout 根据当批章数动态计算（约5s/章），最小600s兜底
+        calc_timeout = max(600, (batch_end - batch_start + 1) * 5)
         result = subprocess.run(
             ['python3', script, '--start', str(batch_start), '--end', str(batch_end)],
-            text=True, timeout=600  # 每批最多 10 分钟
+            text=True, timeout=calc_timeout
         )
         if result.returncode != 0:
             print(f"⚠️ 批次 [{batch_start}-{batch_end}] 返回码 {result.returncode}")
