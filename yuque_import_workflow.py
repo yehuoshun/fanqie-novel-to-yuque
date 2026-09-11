@@ -160,8 +160,8 @@ def run_import():
         result = subprocess.run(['python3', script], text=True)
         return result.returncode == 0
     
-    # 每批 200 章
-    BATCH = 200
+    # 每批 100 章（过大 timeout 风险高，进度文件已兜底）
+    BATCH = 100
     success = True
     for batch_start in range(1, total + 1, BATCH):
         batch_end = min(batch_start + BATCH - 1, total)
@@ -194,6 +194,9 @@ def main():
         repo_name = f"《{args.title}》又名《{args.alias}》 — {args.author}"
     else:
         repo_name = f"《{args.title}》 — {args.author}"
+        print("⚠️ 未指定 --alias。如果该小说有别名/又名，建议补传，例如：")
+        print(f"   --alias \"别名内容\"")
+        print()
 
     print(f"📚 {repo_name}")
     print(f"   book_id: {args.book_id}")
