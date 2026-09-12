@@ -18,6 +18,8 @@ import subprocess
 import sys
 import time
 import argparse
+
+from fanqie_tools import auto_fill_meta
 import re
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
@@ -197,6 +199,11 @@ def main():
     parser.add_argument('--skip-create', action='store_true', help='跳过创建知识库（仅导入）')
     parser.add_argument('--skip-import', action='store_true', help='跳过导入（仅创建知识库）')
     args = parser.parse_args()
+
+    # 元数据自动补全：缺作者/简介时用搜索接口拿明文（无字体加密）
+    args.title, args.author, args.description = auto_fill_meta(
+        args.book_id, args.title, args.author, args.description
+    )
 
     # 拼知识库名称
     if args.alias:
