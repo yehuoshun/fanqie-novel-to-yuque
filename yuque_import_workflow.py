@@ -103,21 +103,30 @@ def generate_chapter_list(book_id):
 
     print(f"📖 API 返回 {len(all_ids)} 个 item_id")
 
-    # 2. 爬页面拿标题 → item_id 映射
-    page_url = f"https://fanqienovel.com/page/{book_id}"
-    html = curl_get(page_url, timeout=15)
-    if not html:
-        print("❌ 获取书籍页面失败")
-        return None
-
+    # 2. 标题映射：优先用 API 的 chapterListWithVolume（自带标题，页面反爬也不怕）
     title_map = {}
-    for m in re.finditer(r'href="/reader/(\d+)"[^>]*class="chapter-item-title"[^>]*>([^<]+)</a>', html):
-        item_id = m.group(1)
-        title = m.group(2).strip()
-        title_map[item_id] = title
+    try:
+        vol_data = api_data['data']['data'].get('chapterListWithVolume')
+        if vol_data:
+            for vol in vol_data:
+                for ch in vol:
+                    if ch.get('itemId') and ch.get('title'):
+                        title_map[ch['itemId']] = ch['title']
+    except Exception as e:
+        print(f"⚠️ API 卷数据解析失败: {e}")
+
+    # 2b. fallback：API 无标题时爬页面拿标题 → item_id 映射
+    if not title_map:
+        page_url = f"https://fanqienovel.com/page/{book_id}"
+        html = curl_get(page_url, timeout=15)
+        if html:
+            for m in re.finditer(r'href="/reader/(\d+)"[^>]*class="chapter-item-title"[^>]*>([^<]+)</a>', html):
+                item_id = m.group(1)
+                title = m.group(2).strip()
+                title_map[item_id] = title
 
     if not title_map:
-        print("❌ 页面未提取到章节标题（可能需 JS 渲染）")
+        print("❌ 章节标题获取失败（API 无标题且页面未提取到，可能需 JS 渲染）")
         return None
 
     # 3. 按 API 顺序组装章节列表
