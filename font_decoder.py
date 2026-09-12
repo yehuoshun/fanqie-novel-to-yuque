@@ -31,7 +31,9 @@ REF_FONT_URL = ("https://cdn.jsdelivr.net/gh/adobe-fonts/source-han-sans@release
 # raw.githubusercontent.com 国内直连不通时的备选（ghproxy 类镜像可自行替换）
 REF_FONT_URL_FALLBACK = ("https://raw.githubusercontent.com/adobe-fonts/source-han-sans/"
                          "release/OTF/SimplifiedChinese/SourceHanSansSC-Normal.otf")
-REF_FONT_DEFAULT = os.path.expanduser("~/.cache/fanqie/SourceHanSansSC-Normal.otf")
+# 参考字体默认放项目内 fonts/ 目录（随 git 持久化，沙箱重建不丢）
+REF_FONT_DEFAULT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "fonts", "SourceHanSansSC-Normal.otf")
 
 SIZE = 40          # 渲染字号
 CANVAS = SIZE * 2  # 画布尺寸
