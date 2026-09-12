@@ -138,6 +138,7 @@ def _is_progress_contaminated(chapters, progress):
 def main():
     # 解析命令行参数（范围模式）
     import argparse
+    from reorder_toc import reorder
     parser = argparse.ArgumentParser(description='批量导入番茄小说到语雀')
     parser.add_argument('--start', type=int, default=1, help='起始章节（1-based）')
     parser.add_argument('--end', type=int, default=0, help='结束章节（含），0=全部')
@@ -213,6 +214,8 @@ def main():
         if doc_id:
             print(f"✅", flush=True)
             completed_set.add(title)
+            # 补导成功时同步移除 failed 记录，避免残留导致下次重复导入
+            failed_set.discard(title)
             new_success += 1
         else:
             err_msg = err[:60] if err else 'unknown'
@@ -232,7 +235,13 @@ def main():
     print(f"总成功: {len(completed_set)}, 总失败: {len(failed_set)}", flush=True)
     print(f"耗时: {elapsed:.0f}s", flush=True)
 
-    # TOC 顺序由逐章创建自然保证，无需修复
+    # 校验并修复 TOC 顺序（补导的文档会追加到末尾导致错位）
+    if new_success > 0:
+        print()
+        print("🔧 校验并修复 TOC 顺序...")
+        reorder(BOOK_ID, CHAPTER_LIST)
+    else:
+        print("\nℹ️ 本次无新增导入，跳过 TOC 校验")
 
 if __name__ == '__main__':
     main()
