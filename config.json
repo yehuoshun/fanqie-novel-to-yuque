@@ -1,8 +1,6 @@
 {
-  "yuque_repo_id": "83537476",
+  "yuque_repo_id": "83437061",
   "api_base": "http://101.35.133.34:5000",
-  "langge_api": "https://api.langge.cf/content",
-  "langge_device": "ea7a2be2-10a6-4d0f-995e-ecc8ef680a7c",
   "progress_file": "progress/novel_v2_progress.json",
   "chapter_list": "/tmp/chapter_list.json",
   "min_content_length": 500,
