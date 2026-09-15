@@ -23,6 +23,8 @@ def load_config():
 CONFIG = load_config()
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 API_BASE = CONFIG['api_base']
+LANGGE_API = CONFIG.get('langge_api', 'https://api.langge.cf/content')
+LANGGE_DEVICE = CONFIG.get('langge_device', 'ea7a2be2-10a6-4d0f-995e-ecc8ef680a7c')
 BOOK_ID = CONFIG['yuque_repo_id']
 PROGRESS_FILE = os.path.join(PROJECT_DIR, CONFIG['progress_file'])
 CHAPTER_LIST = CONFIG['chapter_list']
@@ -41,38 +43,68 @@ def fetch_text(url, timeout=15):
     )
     return result.stdout
 
+def clean_langge_content(content):
+    """清洗 langge 返回的正文：去零宽字符 + 剥尾部广告"""
+    if not content:
+        return ''
+    # 1. 去零宽字符（langge 广告里混了 U+200B~U+200F 等防正则）
+    content = re.sub(r'[\u200b\u200c\u200d\u200e\u200f\u2060\ufeff]', '', content)
+    # 2. 剥尾部广告：从第一个广告标志词处截断
+    footer_markers = [
+        '您当前未登录',
+        '有问题可到TG群',
+        '已转为内部使用',
+        '天一团队',
+        'dahuilang888',
+        'admin@langge.cf',
+        'langge.cf',
+    ]
+    cut = len(content)
+    for marker in footer_markers:
+        idx = content.find(marker)
+        if idx != -1:
+            cut = min(cut, idx)
+    content = content[:cut]
+    return content.strip()
+
+
 def get_chapter_content(item_id, max_retries=3):
-    """Get full chapter content from the API，自动重试最多 3 次"""
+    """从 langge 聚合 API 获取全文（明文，无字体混淆），自动重试"""
     for attempt in range(1, max_retries + 1):
-        raw = fetch_text(f"{API_BASE}/api/raw_full?item_id={item_id}")
+        url = (f"{LANGGE_API}?item_id={item_id}"
+               f"&source=%E7%95%AA%E8%8C%84"
+               f"&device={LANGGE_DEVICE}"
+               f"&tab=%E5%B0%8F%E8%AF%B4"
+               f"&version=4.6.29")
+        raw = fetch_text(url)
         try:
             data = json.loads(raw)
-            content = data['data']['content']
-            # Extract text from HTML
-            texts = re.findall(r'<p[^>]*>(.*?)</p>', content, re.DOTALL)
-            # Add tab indentation (2 spaces per paragraph)
+            if data.get('code') != 0:
+                if attempt < max_retries:
+                    print(f"重试第{attempt}次(code={data.get('code')})...", end='', flush=True)
+                    time.sleep(2)
+                    continue
+                return None
+            content = clean_langge_content(data.get('content', ''))
+            if not content:
+                if attempt < max_retries:
+                    print(f"重试第{attempt}次(空)...", end='', flush=True)
+                    time.sleep(2)
+                    continue
+                return None
+            # 段落格式化：按 \n 切分，非空段加首行缩进
             lines = []
-            for t in texts:
-                t = re.sub(r'<[^>]+>', '', t)
-                t = re.sub(r'&nbsp;', ' ', t)
-                t = re.sub(r'&lt;', '<', t)
-                t = re.sub(r'&gt;', '>', t)
-                t = re.sub(r'&amp;', '&', t)
-                t = re.sub(r'&#34;', '"', t)
-                t = re.sub(r'&#39;', "'", t)
-                t = re.sub(r'&quot;', '"', t)
-                t = re.sub(r'&apos;', "'", t)
-                t = t.strip()
-                if t:
-                    lines.append(f"&emsp;&emsp;{t}")
+            for seg in content.split('\n'):
+                seg = seg.strip()
+                if seg:
+                    lines.append(f"&emsp;&emsp;{seg}")
                 else:
-                    lines.append("")
+                    lines.append('')
             result = '\n'.join(lines)
-            if result and len(result) >= MIN_CONTENT_LEN:
+            if len(result) >= MIN_CONTENT_LEN:
                 return result
-            # 内容为空或过短，重试
             if attempt < max_retries:
-                print(f"重试第{attempt}次...", end='', flush=True)
+                print(f"重试第{attempt}次(短{len(result)})...", end='', flush=True)
                 time.sleep(2)
         except Exception:
             if attempt < max_retries:

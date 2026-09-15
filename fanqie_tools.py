@@ -10,6 +10,7 @@ fanqie_tools.py — 番茄小说增强工具（简介/元数据获取）
     # -> {"book_name":..., "author":..., "abstract":..., "cover":..., "word_count":...}
 """
 import json
+import re
 import subprocess
 import sys
 import time
@@ -40,15 +41,53 @@ def _walk_books(obj):
             yield from _walk_books(v)
 
 
+def fetch_book_meta_from_page(book_id, timeout=20):
+    """
+    直接从番茄书籍页 HTML 提取元数据（明文，无需搜索接口/字体解码）。
+    页面 __INITIAL_STATE__ 里带 bookName/author/abstract 明文字段。
+    """
+    url = f"https://fanqienovel.com/page/{book_id}"
+    html = curl_get(url, timeout=timeout)
+    if not html:
+        return None
+
+    def _extract(pattern):
+        m = re.search(pattern, html)
+        return m.group(1) if m else ''
+
+    book_name = _extract(r'"bookName":"([^"]*)"')
+    author = _extract(r'"authorName":"([^"]*)"')
+    if not author:
+        author = _extract(r'"author":"([^"]*)"')
+    abstract = _extract(r'"abstract":"((?:[^"\\]|\\.)*)"')
+    if abstract:
+        # JSON 转义还原（\n 等）
+        abstract = abstract.replace('\\n', ' ').replace('\\r', ' ').replace('\\t', ' ').strip()
+
+    if not book_name:
+        return None
+
+    return {
+        'book_name': book_name,
+        'author': author,
+        'abstract': abstract,
+        'cover': _extract(r'"thumbUri":"([^"]*)"') or _extract(r'"thumb_url":"([^"]*)"'),
+        'word_count': 0,
+        'read_count': 0,
+        'creation_status': None,
+    }
+
+
 def fetch_book_meta(book_id, search_key=None, retries=3):
     """
-    通过搜索接口获取番茄书籍元数据（明文，无需字体解码）。
-
-    :param book_id: 番茄 book_id（数字字符串）
-    :param search_key: 搜索关键词，默认用 book_id 自身
-    :param retries: 失败重试次数
-    :return: dict（book_name/author/abstract/cover/word_count/...），失败返回 None
+    获取番茄书籍元数据。优先直抓页面 HTML（快且稳），失败后回退搜索接口。
     """
+    # 优先：页面直抓（无第三方依赖）
+    meta = fetch_book_meta_from_page(book_id)
+    if meta:
+        return meta
+
+    # 回退：搜索接口
     key = search_key or str(book_id)
     for attempt in range(1, retries + 1):
         url = f"{API_BASE}/api/search?key={key}"
@@ -82,13 +121,16 @@ def fetch_book_meta(book_id, search_key=None, retries=3):
 
 def auto_fill_meta(book_id, title, author='', description=''):
     """
-    自动补全书籍元数据：已有值保留，缺失值用搜索接口补。
+    自动补全书籍元数据：已有值保留，缺失值自动补（页面直抓优先）。
 
     :return: (title, author, description) 三元组
     """
+    # 作者和简介都已提供时，跳过抓取，避免浪费时间
+    if author and description:
+        return title, author, description
     meta = fetch_book_meta(book_id, search_key=title)
     if not meta:
-        print("ℹ️ 搜索接口未命中该书，元数据保持手动传入值")
+        print("ℹ️ 未获取到该书元数据，保持手动传入值")
         return title, author, description
     if not author:
         author = meta['author']
