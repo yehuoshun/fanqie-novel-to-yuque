@@ -26,7 +26,6 @@ CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.j
 
 # mcporter 需要从 workspace 根目录调用才能找到 yuque-mcp 配置
 MCP_WORKDIR = '/home/admin/.openclaw/workspace'
-API_BASE = "http://101.35.133.34:5000"
 
 
 def load_config():
@@ -93,42 +92,38 @@ def generate_chapter_list(book_id):
     if os.path.exists(progress_path):
         os.remove(progress_path)
         print(f"🧹 已清除旧进度文件: {progress_path}")
-    # 1. 调 API 拿 allItemIds（按发布顺序排列，包含番外）
-    api_url = f"{API_BASE}/api/book?bookId={book_id}"
-    raw = curl_get(api_url)
+    # 1. 调番茄官方目录接口获取 allItemIds + 标题
+    dir_url = f"https://fanqienovel.com/api/reader/directory/detail?bookId={book_id}"
+    raw = curl_get(dir_url, timeout=15)
     try:
-        api_data = json.loads(raw)
-        all_ids = api_data['data']['data']['allItemIds']
+        dir_data = json.loads(raw)
+        all_ids = dir_data['data']['allItemIds']
     except Exception as e:
-        print(f"❌ API 获取章节列表失败: {e}")
-        return None
-
-    print(f"📖 API 返回 {len(all_ids)} 个 item_id")
-
-    # 2. 标题映射：优先用 API 的 chapterListWithVolume（自带标题，页面反爬也不怕）
-    title_map = {}
-    try:
-        vol_data = api_data['data']['data'].get('chapterListWithVolume')
-        if vol_data:
-            for vol in vol_data:
-                for ch in vol:
-                    if ch.get('itemId') and ch.get('title'):
-                        title_map[ch['itemId']] = ch['title']
-    except Exception as e:
-        print(f"⚠️ API 卷数据解析失败: {e}")
-
-    # 2b. fallback：API 无标题时爬页面拿标题 → item_id 映射
-    if not title_map:
+        # fallback: 爬页面
         page_url = f"https://fanqienovel.com/page/{book_id}"
         html = curl_get(page_url, timeout=15)
-        if html:
-            for m in re.finditer(r'href="/reader/(\d+)"[^>]*class="chapter-item-title"[^>]*>([^<]+)</a>', html):
-                item_id = m.group(1)
-                title = m.group(2).strip()
-                title_map[item_id] = title
+        if not html:
+            print(f"❌ 获取章节列表失败: {e}")
+            return None
+        all_ids = []
+        title_map = {}
+        for m in re.finditer(r'href="/reader/(\d+)"[^>]*>([^<]+)</a>', html):
+            iid = m.group(1)
+            title = m.group(2).strip()
+            all_ids.append(iid)
+            title_map[iid] = title
+    else:
+        print(f"📖 目录接口返回 {len(all_ids)} 个 item_id")
+        # 标题映射
+        title_map = {}
+        vol_data = dir_data['data'].get('chapterListWithVolume', [])
+        for vol in vol_data:
+            for ch in vol:
+                if ch.get('itemId') and ch.get('title'):
+                    title_map[ch['itemId']] = ch['title']
 
     if not title_map:
-        print("❌ 章节标题获取失败（API 无标题且页面未提取到，可能需 JS 渲染）")
+        print("❌ 章节标题获取失败")
         return None
 
     # 3. 按 API 顺序组装章节列表

@@ -23,6 +23,15 @@ GET http://101.35.133.34:5000/api/raw_full?item_id={item_id}
 ### 3. 语雀上传
 通过 `mcporter` 调 `yuque-mcp` 的 MCP 工具，创建知识库、移动分组、创建文档全部走统一通道。
 
+## 前置：启动本地书源服务
+
+```bash
+cd code/fanqie-server
+python3 minimal_server.py &
+```
+
+服务启动后监听 `localhost:8900`，提供 `/api/book`、`/api/raw_full`、`/api/search` 接口。
+
 ## 依赖
 
 - **mcporter**：MCP 调用工具（已预装）
