@@ -89,54 +89,80 @@ def create_yuque_doc(title, body):
         return None, f"parse: {output[:200]}"
 
 # --- 内容获取 ---
-def get_chapter_content(item_id, max_retries=3):
+def _langge_fetch(item_id):
+    """通过 langge API 获取全文（plaintext，无需解码）"""
+    url = (f"https://api.langge.cf/content?item_id={item_id}"
+           f"&source=%E7%95%AA%E8%8C%84&device=ea7a2be2-10a6-4d0f-995e-ecc8ef680a7c"
+           f"&tab=%E5%B0%8F%E8%AF%B4&version=4.6.29")
+    try:
+        raw = subprocess.run(['curl', '-s', '-m', '15', url],
+                           capture_output=True, text=True, timeout=20).stdout
+        if not raw:
+            return None
+        data = json.loads(raw)
+        if data.get('code') != 0:
+            return None
+        content = data.get('content', '')
+        if not content or len(content) < 500:
+            return None
+        # 清洗广告尾巴
+        cut = len(content)
+        for m in ['当前未登录','TG群','天一团队','dahuilang888','admin@langge','langge.cf']:
+            idx = content.find(m)
+            if idx != -1: cut = min(cut, idx)
+        content = content[:cut].strip()
+        return content
+    except Exception as e:
+        return None
+
+
+def get_chapter_content(item_id, max_retries=5):
     """从 reader 页获取全文，charset 解码"""
-    for attempt in range(1, max_retries + 1):
-        html = subprocess.run([
-            'curl', '-s', '-m', '15',
-            '-H', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            '-H', 'Referer: https://fanqienovel.com/',
-            f"https://fanqienovel.com/reader/{item_id}"
-        ], capture_output=True, text=True, timeout=20).stdout
+    # 尝试 reader 页直抓（前 10 章有效，locked 章只有预览）
+    html = subprocess.run([
+        'curl', '-s', '-m', '15',
+        '-H', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        '-H', 'Referer: https://fanqienovel.com/',
+        f"https://fanqienovel.com/reader/{item_id}"
+    ], capture_output=True, text=True, timeout=20).stdout
 
-        if not html:
-            if attempt < max_retries:
-                print(f"重试第{attempt}次(空)...", end='', flush=True)
-                time.sleep(2)
-                continue
-            return None
-
+    if html:
         m = re.search(r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\});', html, re.DOTALL)
-        if not m:
-            if attempt < max_retries:
-                print(f"重试第{attempt}次(无数据)...", end='', flush=True)
-                time.sleep(2)
-                continue
-            return None
+        if m:
+            try:
+                data = json.loads(m.group(1))
+                cd = data.get('reader', {}).get('chapterData', {})
+                content = cd.get('content', '')
+                paragraphs = re.findall(r'<p>(.*?)</p>', content, re.DOTALL)
+                lines = []
+                for p in paragraphs:
+                    t = decode_text(p.strip())
+                    if t: lines.append(f"&emsp;&emsp;{t}")
+                    else: lines.append("")
+                result = '\n'.join(lines)
+                if len(result) >= MIN_CONTENT_LEN:
+                    return result
+                # reader 页内容不足 → fallback 到 langge
+            except Exception:
+                pass
 
-        try:
-            data = json.loads(m.group(1))
-            cd = data.get('reader', {}).get('chapterData', {})
-            content = cd.get('content', '')
-            # 提取 <p> 段落并解码
-            paragraphs = re.findall(r'<p>(.*?)</p>', content, re.DOTALL)
+    # fallback: langge API（locked 章也能拿全文）
+    for attempt in range(1, max_retries + 1):
+        content = _langge_fetch(item_id)
+        if content:
+            # 转成 PROJECT 格式（首行缩进）
             lines = []
-            for p in paragraphs:
-                t = decode_text(p.strip())
-                if t:
-                    lines.append(f"&emsp;&emsp;{t}")
+            for seg in content.split('\n'):
+                seg = seg.strip()
+                if seg:
+                    lines.append(f"&emsp;&emsp;{seg}")
                 else:
-                    lines.append("")
+                    lines.append('')
             result = '\n'.join(lines)
             if len(result) >= MIN_CONTENT_LEN:
                 return result
-            if attempt < max_retries:
-                print(f"重试第{attempt}次({len(result)}字)...", end='', flush=True)
-                time.sleep(2)
-        except Exception as e:
-            if attempt < max_retries:
-                print(f"重试第{attempt}次({e})...", end='', flush=True)
-                time.sleep(2)
+        if attempt < max_retries:
+            time.sleep(5)
     return None
 
 # --- 进度管理 ---

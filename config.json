@@ -1,11 +1,11 @@
 {
-  "yuque_repo_id": "83437061",
+  "yuque_repo_id": "83577654",
   "api_base": "http://localhost:8900",
   "progress_file": "progress/novel_v2_progress.json",
   "chapter_list": "/tmp/chapter_list.json",
   "min_content_length": 500,
   "warning_content_length": 1000,
-  "api_interval": 0.5,
+  "api_interval": 3,
   "yuque_config": {
     "user_login": "yehuoshun"
   },
