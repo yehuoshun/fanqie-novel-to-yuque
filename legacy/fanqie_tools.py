@@ -6,21 +6,25 @@ fanqie_tools.py — 番茄小说增强工具（简介/元数据获取）
 """
 import json
 import re
-import subprocess
 import sys
 import time
 
+from curl_cffi import requests as cffi_req
+
 
 def curl_get(url, timeout=15):
-    """HTTP GET 返回文本（带浏览器 UA）"""
-    result = subprocess.run(
-        ['curl', '-s', '-m', str(timeout),
-         '-H', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-         '-H', 'Referer: https://fanqienovel.com/',
-         url],
-        capture_output=True, text=True, timeout=timeout + 5
-    )
-    return result.stdout
+    """HTTP GET 返回文本（curl_cffi 伪装 Chrome 指纹，绕过反爬）"""
+    try:
+        resp = cffi_req.get(
+            url, impersonate="chrome", timeout=timeout,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://fanqienovel.com/',
+            }
+        )
+        return resp.text
+    except Exception:
+        return ''
 
 
 def fetch_book_meta(book_id, search_key=None, retries=3):

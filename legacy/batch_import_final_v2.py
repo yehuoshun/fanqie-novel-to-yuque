@@ -6,6 +6,7 @@ import re
 import sys
 import os
 import time
+from curl_cffi import requests as cffi_req
 
 # --- 配置加载 ---
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
@@ -95,8 +96,8 @@ def _langge_fetch(item_id):
            f"&source=%E7%95%AA%E8%8C%84&device=ea7a2be2-10a6-4d0f-995e-ecc8ef680a7c"
            f"&tab=%E5%B0%8F%E8%AF%B4&version=4.6.29")
     try:
-        raw = subprocess.run(['curl', '-s', '-m', '15', url],
-                           capture_output=True, text=True, timeout=20).stdout
+        resp = cffi_req.get(url, impersonate="chrome", timeout=20)
+        raw = resp.text
         if not raw:
             return None
         data = json.loads(raw)
@@ -119,12 +120,18 @@ def _langge_fetch(item_id):
 def get_chapter_content(item_id, max_retries=5):
     """从 reader 页获取全文，charset 解码"""
     # 尝试 reader 页直抓（前 10 章有效，locked 章只有预览）
-    html = subprocess.run([
-        'curl', '-s', '-m', '15',
-        '-H', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        '-H', 'Referer: https://fanqienovel.com/',
-        f"https://fanqienovel.com/reader/{item_id}"
-    ], capture_output=True, text=True, timeout=20).stdout
+    try:
+        resp = cffi_req.get(
+            f"https://fanqienovel.com/reader/{item_id}",
+            impersonate="chrome", timeout=20,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://fanqienovel.com/',
+            }
+        )
+        html = resp.text
+    except Exception:
+        html = ''
 
     if html:
         m = re.search(r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\});', html, re.DOTALL)

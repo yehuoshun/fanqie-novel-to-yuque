@@ -1,13 +1,8 @@
 {
-  "yuque_repo_id": "83577654",
-  "api_base": "http://localhost:8900",
-  "progress_file": "progress/novel_v2_progress.json",
-  "chapter_list": "/tmp/chapter_list.json",
-  "min_content_length": 500,
-  "warning_content_length": 1000,
-  "api_interval": 3,
+  "yuque_repo_id": "",
+  "progress_file": "progress/txt_progress.json",
   "yuque_config": {
     "user_login": "yehuoshun"
   },
-  "_note": "yuque_repo_id 是语雀知识库 ID（数字）。番茄 book_id 通过环境变量 BOOK_ID 传入。stack_id 已硬编码为 26774009（小说分组）。"
+  "_note": "yuque_repo_id 是语雀知识库 ID。每次导入新小说用 --create 自动创建。"
 }
