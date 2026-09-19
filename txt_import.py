@@ -219,6 +219,11 @@ def main():
         if not args.title:
             print("❌ --create 需要 --title")
             sys.exit(1)
+        # 新知识库 → 自动清旧进度（同一个库才续传，不同库不串）
+        progress_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), PROGRESS_FILE)
+        if os.path.exists(progress_path):
+            os.remove(progress_path)
+            print(f"🧹 新知识库，已清除旧进度文件")
         name = f"《{args.title}》"
         if args.alias:
             for a in args.alias.split('/'):
