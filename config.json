@@ -1,8 +1,7 @@
 {
-  "yuque_repo_id": "",
+  "yuque_repo_id": "83703233",
   "progress_file": "progress/txt_progress.json",
   "yuque_config": {
     "user_login": "yehuoshun"
-  },
-  "_note": "yuque_repo_id 是语雀知识库 ID。每次导入新小说用 --create 自动创建。"
+  }
 }

@@ -151,7 +151,7 @@ def create_repo(name, description):
 def create_doc(book_id, title, body):
     """创建语雀文档，返回 (doc_id, err)"""
     data = mcporter_call('yuque_create_doc', {
-        'book_id': book_id, 'title': title, 'body': body,
+        'book_id': str(book_id), 'title': title, 'body': body,
         'format': 'markdown', 'public': 0,
     })
     if isinstance(data, dict) and data.get('id'):
@@ -182,6 +182,7 @@ def main():
     ap.add_argument('--title', default='', help='书名（创建新库时必填）')
     ap.add_argument('--author', default='', help='作者名')
     ap.add_argument('--description', default='', help='作品简介')
+    ap.add_argument('--alias', default='', help='别名/又名，多个用 / 分隔')
     ap.add_argument('--create', action='store_true', help='创建新知识库')
     ap.add_argument('--start', type=int, default=1)
     ap.add_argument('--end', type=int, default=0)
@@ -218,7 +219,13 @@ def main():
         if not args.title:
             print("❌ --create 需要 --title")
             sys.exit(1)
-        name = f"《{args.title}》" + (f" — {args.author}" if args.author else "")
+        name = f"《{args.title}》"
+        if args.alias:
+            for a in args.alias.split('/'):
+                a = a.strip()
+                if a:
+                    name += f"又名《{a}》"
+        name += f" — {args.author}" if args.author else ""
         book_id = create_repo(name, args.description)
         if not book_id:
             sys.exit(1)

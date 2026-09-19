@@ -38,6 +38,7 @@ def main():
     ap.add_argument('--title', default='', help='书名（创建新库时必填）')
     ap.add_argument('--author', default='', help='作者名')
     ap.add_argument('--description', default='', help='作品简介')
+    ap.add_argument('--alias', default='', help='别名/又名，多个用 / 分隔')
     ap.add_argument('--create', action='store_true', help='创建新知识库（需要 --title）')
     ap.add_argument('--start', type=int, default=1, help='起始章节号')
     ap.add_argument('--end', type=int, default=0, help='结束章节号（0=全部）')
@@ -59,6 +60,8 @@ def main():
         cmd += ['--author', args.author]
     if args.description:
         cmd += ['--description', args.description]
+    if args.alias:
+        cmd += ['--alias', args.alias]
     if args.create:
         cmd += ['--create']
     if args.start != 1:
