@@ -158,15 +158,23 @@ def create_repo(name, description):
         print(f"❌ 创建知识库失败: {str(data)[:200]}")
         return None
     print(f"✅ 知识库已创建: id={repo_id}")
-    # yuque_create_repo 不支持 stack_id，需单独调用移动到小说分组
-    stack_data = mcporter_call('yuque_update_book_stack', {
-        'book_id': int(repo_id),
-        'stack_id': 26774009,
-    })
-    if isinstance(stack_data, dict) and stack_data.get('success'):
-        print(f"✅ 已移动到小说分组 (stack_id=26774009)")
-    else:
-        print(f"⚠️ 移动分组失败: {str(stack_data)[:200]}")
+    # yuque_create_repo 不支持 stack_id，需单独调用移动到小说分组。
+    # 刚创建完库立即移动可能不生效（语雀同步延迟），先 sleep 再移动+重试。
+    time.sleep(2)
+    moved = False
+    for attempt in range(3):
+        stack_data = mcporter_call('yuque_update_book_stack', {
+            'book_id': int(repo_id),
+            'stack_id': 26774009,
+        }, timeout=90)
+        if isinstance(stack_data, dict) and stack_data.get('success'):
+            print(f"✅ 已移动到小说分组 (stack_id=26774009)")
+            moved = True
+            break
+        print(f"⚠️ 第 {attempt + 1} 次移动失败: {str(stack_data)[:150]}")
+        time.sleep(2)
+    if not moved:
+        print(f"❌ 移动分组失败，请手动处理: 库 {repo_id} → 分组 26774009")
     return repo_id
 
 
