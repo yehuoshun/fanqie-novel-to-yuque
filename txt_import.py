@@ -35,6 +35,16 @@ MCP_WORKDIR = '/home/admin/.openclaw/workspace'
 CHAPTER_LIST = '/tmp/chapter_list.json'
 PROGRESS_FILE = os.path.join(PROJECT_DIR, 'progress', 'txt_progress.json')
 
+# 修正章节标题缺"章"字（如"第518 那个怪物"→"第518章 那个怪物"）
+_ZHANG_FIX_RE = re.compile(
+    r'^第\s*([0-9零一二三四五六七八九十百千万两〇]+)\s+(?=[^\s章回节卷集话篇])',
+    re.M
+)
+
+
+def _fix_missing_zhang(text):
+    return _ZHANG_FIX_RE.sub(r'第\1章 ', text)
+
 # ---------------------------------------------------------------- 编码读取
 def read_txt(path):
     """自动探测编码读取 txt（中文小说常见 utf-8 / gb18030 / gbk）"""
@@ -44,10 +54,10 @@ def read_txt(path):
     raw = open(path, 'rb').read()
     for enc in ('utf-8-sig', 'utf-8', 'gb18030', 'gbk', 'big5'):
         try:
-            return raw.decode(enc)
+            return _fix_missing_zhang(raw.decode(enc))
         except (UnicodeDecodeError, UnicodeError):
             continue
-    return raw.decode('utf-8', errors='replace')
+    return _fix_missing_zhang(raw.decode('utf-8', errors='replace'))
 
 # ---------------------------------------------------------------- 章节解析
 _TITLE_RE = re.compile(
@@ -57,6 +67,9 @@ _TITLE_RE = re.compile(
     r'|(?:番外|外传)[^\n]{0,40}'
     r')\s*$'
 )
+
+# 番茄/第三方抓取的元数据残留行（混入正文，需过滤）
+_META_RE = re.compile(r'^章节更新时间[:：]')
 
 
 def parse_chapters(text):
@@ -75,6 +88,8 @@ def parse_chapters(text):
 
     for ln in text.split('\n'):
         s = ln.strip()
+        if _META_RE.match(s):  # 跳过抓取残留的元数据行（章节更新时间等）
+            continue
         if s and len(s) <= 50 and _TITLE_RE.match(s):
             flush()
             cur_title = s
@@ -136,15 +151,22 @@ def create_repo(name, description):
         'login': login,
         'name': name,
         'description': description,
-        'type': 'Book',
         'public': 0,
-        'stack_id': 26774009,
     })
     repo_id = data.get('id') if isinstance(data, dict) else None
     if not repo_id:
         print(f"❌ 创建知识库失败: {str(data)[:200]}")
         return None
     print(f"✅ 知识库已创建: id={repo_id}")
+    # yuque_create_repo 不支持 stack_id，需单独调用移动到小说分组
+    stack_data = mcporter_call('yuque_update_book_stack', {
+        'book_id': int(repo_id),
+        'stack_id': 26774009,
+    })
+    if isinstance(stack_data, dict) and stack_data.get('success'):
+        print(f"✅ 已移动到小说分组 (stack_id=26774009)")
+    else:
+        print(f"⚠️ 移动分组失败: {str(stack_data)[:200]}")
     return repo_id
 
 
