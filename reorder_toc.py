@@ -158,13 +158,17 @@ def reorder(book_id, chapter_list_path, dry_run=False, verbose=True):
         print("(dry-run，未修改)")
         return False
 
-    # 逐个提交 moveNode（节点移动有依赖，不批量）
+    # 逐个提交移动（节点移动有依赖，不批量）
     for mv in moves:
-        ops = json.dumps([{k: v for k, v in mv.items() if not k.startswith('_')}], ensure_ascii=False)
-        resp = mcporter_call('yuque_batch_update_toc', {
-            'book_id': book_id, 'ops': ops, 'confirm': 'RESTRUCTURE'
+        action = 'prependNode' if mv['position'] == 'before' else 'appendNode'
+        resp = mcporter_call('yuque_update_toc', {
+            'book_id': book_id,
+            'action': action,
+            'action_mode': 'sibling',
+            'node_uuid': mv['node_uuid'],
+            'target_uuid': mv['target_uuid'],
         })
-        ok = bool(resp) and resp.get('success') == 1
+        ok = isinstance(resp, dict) and 'data' in resp
         print(f"   {'✅' if ok else '❌'} 移动: {mv['_title']}")
         if not ok:
             print(f"     响应: {str(resp)[:200]}")
@@ -196,7 +200,7 @@ def main():
 
     cfg = load_config()
     book_id = args.book_id or cfg['yuque_repo_id']
-    chapter_list = args.chapter_list or cfg['chapter_list']
+    chapter_list = args.chapter_list or '/tmp/chapter_list.json'
 
     if not os.path.exists(chapter_list):
         print(f"❌ 章节列表不存在: {chapter_list}")

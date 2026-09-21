@@ -99,6 +99,45 @@ def parse_chapters(text):
     return chapters
 
 
+def extract_intro(text, alias=''):
+    """从 txt 头部提取「书籍信息 + 简介」，返回 markdown；无则 None。
+
+    用于在第一章前生成一篇「简介」文档。
+    """
+    # 简介正文：位于【简介】与分隔线（————）之间
+    m = re.search(r'【简介】\s*(.*?)(?=—{8,}|$)', text, re.S)
+    intro_text = m.group(1).strip() if m else ''
+
+    def _field(key):
+        mm = re.search(rf'{key}[：:]\s*([^\n]+)', text)
+        return mm.group(1).strip() if mm else ''
+
+    fields = []
+    for key in ('书名', '作者', '连载状态', '字数', '章节数'):
+        v = _field(key)
+        if v:
+            fields.append((key, v))
+    # 别名插到「书名」之后
+    if alias and alias.strip():
+        idx = next((i for i, (k, _) in enumerate(fields) if k == '书名'), -1)
+        fields.insert(idx + 1 if idx >= 0 else 0, ('又名', alias.strip()))
+
+    if not intro_text and not fields:
+        return None
+
+    md = ['# 简介', '']
+    if fields:
+        md.append('## 书籍信息')
+        md.append('')
+        md.extend(f'- {k}：{v}' for k, v in fields)
+        md.append('')
+    if intro_text:
+        md.append('## 简介')
+        md.append('')
+        md.extend(ln.strip() for ln in intro_text.split('\n'))
+    return '\n'.join(md).strip()
+
+
 def fmt_body(title, lines):
     """章节 → 语雀 markdown（段首缩进 + 空行分段）"""
     paras = []
@@ -227,8 +266,14 @@ def main():
     if not chapters:
         print("❌ 未解析到任何章节，请确认 txt 章节标题格式（如「第1章 xxx」）")
         sys.exit(1)
+
+    # 在第一章前插入「简介」文档（书籍信息 + 简介正文）
+    intro_body = extract_intro(text, args.alias)
+    if intro_body:
+        chapters = [("简介", [intro_body])] + chapters
+
     total_all = len(chapters)
-    print(f"📖 解析到 {total_all} 章")
+    print(f"📖 解析到 {total_all} 章" + ("（含简介文档）" if intro_body else ""))
     print(f"   首章: {chapters[0][0]}")
     print(f"   末章: {chapters[-1][0]}")
 
@@ -286,7 +331,10 @@ def main():
     for abs_i, (title, lines) in enumerate(rng, args.start):
         if title in completed:
             continue
-        body = fmt_body(title, lines)
+        if title == "简介":
+            body = lines[0] if lines else ""
+        else:
+            body = fmt_body(title, lines)
         try:
             doc_id, err = create_doc(book_id, title, body)
         except Exception as e:
