@@ -6,9 +6,11 @@ txt_import.py — 小说 TXT → 语雀 导入工具（本地文件版）
 不依赖任何抓取接口。老板上传小说 txt，本脚本解析章节 → 创建知识库 → 批量导入语雀 → 修复 TOC。
 
 用法:
-  # 创建新知识库并导入
+  # 创建新知识库并导入（txt / epub 均可，按扩展名自动识别）
   python3 txt_import.py --txt /path/to/novel.txt \
       --title "书名" --author "作者" --description "简介"
+  python3 txt_import.py --file /path/to/novel.epub --create \
+      --title "书名"
 
   # 导入到已有知识库（读 config.json 的 yuque_repo_id）
   python3 txt_import.py --txt /path/to/novel.txt
@@ -28,6 +30,7 @@ import re
 import subprocess
 import sys
 import time
+import zipfile
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(PROJECT_DIR, 'config.json')
@@ -138,6 +141,34 @@ def extract_intro(text, alias=''):
     return '\n'.join(md).strip()
 
 
+def build_intro_from_meta(meta, alias=''):
+    """EPUB 元数据 → 「简介」文档 markdown；无有效字段时返回 None"""
+    fields = []
+    for key, label in (('title', '书名'), ('author', '作者')):
+        v = (meta.get(key) or '').strip()
+        if v:
+            fields.append((label, v))
+    if alias and alias.strip():
+        idx = next((i for i, (k, _) in enumerate(fields) if k == '书名'), -1)
+        fields.insert(idx + 1 if idx >= 0 else 0, ('又名', alias.strip()))
+
+    intro_text = (meta.get('description') or '').strip()
+    if not fields and not intro_text:
+        return None
+
+    md = ['# 简介', '']
+    if fields:
+        md.append('## 书籍信息')
+        md.append('')
+        md.extend(f'- {k}：{v}' for k, v in fields)
+        md.append('')
+    if intro_text:
+        md.append('## 简介')
+        md.append('')
+        md.extend(ln.strip() for ln in intro_text.split('\n'))
+    return '\n'.join(md).strip()
+
+
 def fmt_body(title, lines):
     """章节 → 语雀 markdown（段首缩进 + 空行分段）"""
     paras = []
@@ -207,7 +238,7 @@ def create_repo(name, description):
             'stack_id': 26774009,
         }, timeout=90)
         if isinstance(stack_data, dict) and stack_data.get('success'):
-            print(f"✅ 已移动到小说分组 (stack_id=26774009)")
+            print("✅ 已移动到小说分组 (stack_id=26774009)")
             moved = True
             break
         print(f"⚠️ 第 {attempt + 1} 次移动失败: {str(stack_data)[:150]}")
@@ -246,7 +277,8 @@ def save_progress(p):
 # ---------------------------------------------------------------- 主流程
 def main():
     ap = argparse.ArgumentParser(description='TXT 小说导入语雀')
-    ap.add_argument('--txt', required=True, help='小说 txt 路径')
+    ap.add_argument('--txt', '--file', dest='txt', required=True,
+                    help='小说文件路径（.txt / .epub，按扩展名自动识别）')
     ap.add_argument('--book-id', default='', help='语雀知识库 ID（缺省读 config.json）')
     ap.add_argument('--title', default='', help='书名（创建新库时必填）')
     ap.add_argument('--author', default='', help='作者名')
@@ -260,15 +292,30 @@ def main():
     ap.add_argument('--no-toc-fix', action='store_true', help='导入完不修 TOC 顺序')
     args = ap.parse_args()
 
-    # 1. 解析章节
-    text = read_txt(args.txt)
-    chapters = parse_chapters(text)
-    if not chapters:
-        print("❌ 未解析到任何章节，请确认 txt 章节标题格式（如「第1章 xxx」）")
-        sys.exit(1)
+    # 1. 解析章节（按扩展名分发：.epub 走 epub_reader，其余按 txt 处理）
+    if args.txt.lower().endswith('.epub'):
+        from epub_reader import read_epub
+        try:
+            data = read_epub(args.txt)
+        except (ValueError, OSError, zipfile.BadZipFile) as e:
+            print(f"❌ EPUB 解析失败: {e}")
+            sys.exit(1)
+        meta = data['meta']
+        chapters = data['chapters']
+        print(f"📕 EPUB: 《{meta.get('title', '?')}》 — {meta.get('author', '?')}")
+        # 元数据作缺省值（命令行显式传参优先）
+        args.title = args.title or meta.get('title', '')
+        args.author = args.author or meta.get('author', '')
+        args.description = args.description or meta.get('description', '')
+        intro_body = build_intro_from_meta(meta, args.alias)
+    else:
+        text = read_txt(args.txt)
+        chapters = parse_chapters(text)
+        intro_body = extract_intro(text, args.alias)
 
-    # 在第一章前插入「简介」文档（书籍信息 + 简介正文）
-    intro_body = extract_intro(text, args.alias)
+    if not chapters:
+        print("❌ 未解析到任何章节，请确认章节标题格式（如「第1章 xxx」）")
+        sys.exit(1)
     if intro_body:
         chapters = [("简介", [intro_body])] + chapters
 
@@ -298,7 +345,7 @@ def main():
         progress_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), PROGRESS_FILE)
         if os.path.exists(progress_path):
             os.remove(progress_path)
-            print(f"🧹 新知识库，已清除旧进度文件")
+            print("🧹 新知识库，已清除旧进度文件")
         name = f"《{args.title}》"
         if args.alias:
             for a in args.alias.split('/'):
