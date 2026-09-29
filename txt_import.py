@@ -32,6 +32,8 @@ import sys
 import time
 import zipfile
 
+import content_check
+
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(PROJECT_DIR, 'config.json')
 MCP_WORKDIR = '/home/admin/.openclaw/workspace'
@@ -255,8 +257,19 @@ def _is_rate_limited(err):
     return any(k in low for k in ('rate_limited', 'rate limit', '429', 'too many', '频率', '限流'))
 
 
+def _is_retryable(err):
+    """可重试错误：限流 或 网络类（超时/断连/5xx）。4xx 参数类错误不重试"""
+    low = err.lower()
+    if _is_rate_limited(err):
+        return True
+    return any(k in low for k in (
+        'timeout', 'timed out', 'connection', 'econn', 'reset', 'refused',
+        'socket', 'internal server', 'bad gateway', '503', '502', '504',
+        'gateway timeout', 'eof'))
+
+
 def create_doc(book_id, title, body, retries=4):
-    """创建语雀文档，返回 (doc_id, err)。限流时指数退避重试（3/6/12/24s）"""
+    """创建语雀文档，返回 (doc_id, err)。限流/网络错误指数退避重试（限流 3/6/12/24s，网络 2/4/8/16s）"""
     for attempt in range(retries + 1):
         data = mcporter_call('yuque_create_doc', {
             'book_id': str(book_id), 'title': title, 'body': body,
@@ -265,9 +278,11 @@ def create_doc(book_id, title, body, retries=4):
         if isinstance(data, dict) and data.get('id'):
             return data['id'], None
         err = str(data)[:100]
-        if attempt < retries and _is_rate_limited(err):
-            wait = 3 * (2 ** attempt)
-            print(f"⏳ 限流 {title}，{wait}s 后重试 ({attempt + 1}/{retries})", flush=True)
+        if attempt < retries and _is_retryable(err):
+            base = 3 if _is_rate_limited(err) else 2
+            wait = base * (2 ** attempt)
+            kind = '限流' if _is_rate_limited(err) else '网络错误'
+            print(f"⏳ {kind} {title}，{wait}s 后重试 ({attempt + 1}/{retries})", flush=True)
             time.sleep(wait)
             continue
         return None, err
@@ -342,6 +357,11 @@ def main():
     # 写章节列表（兼容 reorder_toc）
     with open(CHAPTER_LIST, 'w', encoding='utf-8') as f:
         json.dump([[t, ''] for t, _ in chapters], f, ensure_ascii=False)
+
+    # 内容预检：字数 / HTML 残留 / 乱码（只告警不阻断）
+    precheck = content_check.analyze_chapters(chapters)
+    if precheck['empty'] or precheck['short'] or precheck['html'] or precheck['moji']:
+        print(content_check.format_report(precheck))
 
     if args.dry_run:
         print("\n预览章节标题（前 20）:")
@@ -429,6 +449,12 @@ def main():
         reorder(book_id, CHAPTER_LIST)
     else:
         print(f"\nℹ️ 尚有 {total_all - len(completed)} 章未完成，跳过 TOC 修复")
+
+    # 5. 导入后内容校验报告（只统计已成功导入的章节）
+    if completed:
+        imported = [(t, l) for t, l in chapters if t in completed]
+        print("\n" + content_check.format_report(
+            content_check.analyze_chapters(imported)))
 
     print(f"\n📍 知识库地址: https://www.yuque.com/{login}/{book_id}")
 
