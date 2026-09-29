@@ -46,6 +46,11 @@ def mcporter_call(tool, args_dict, timeout=60):
         cwd=MCP_WORKDIR
     )
     output = result.stdout.strip() or result.stderr.strip()
+    if 'MCP error' in output:
+        # MCP 参数校验失败时，错误信息里含参数 schema 的 JSON 数组，
+        # 正则兜底会误把它当成功结果解析（如 book_id 传 int → 0 个文档）
+        print(f"⚠️ mcporter 调用失败: {output[:200]}")
+        return None
     try:
         return json.loads(output)
     except json.JSONDecodeError:

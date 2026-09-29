@@ -245,7 +245,8 @@ def create_repo(name, description):
         time.sleep(2)
     if not moved:
         print(f"❌ 移动分组失败，请手动处理: 库 {repo_id} → 分组 26774009")
-    return repo_id
+    # 统一返回 str：yuque_get_toc 等 MCP 工具 book_id 只收 string，int 会校验失败
+    return str(repo_id)
 
 
 def create_doc(book_id, title, body):
