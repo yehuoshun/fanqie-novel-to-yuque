@@ -249,15 +249,29 @@ def create_repo(name, description):
     return str(repo_id)
 
 
-def create_doc(book_id, title, body):
-    """创建语雀文档，返回 (doc_id, err)"""
-    data = mcporter_call('yuque_create_doc', {
-        'book_id': str(book_id), 'title': title, 'body': body,
-        'format': 'markdown', 'public': 0,
-    })
-    if isinstance(data, dict) and data.get('id'):
-        return data['id'], None
-    return None, str(data)[:100]
+def _is_rate_limited(err):
+    """判断是否限流类错误（语雀 429 / RATE_LIMITED）"""
+    low = err.lower()
+    return any(k in low for k in ('rate_limited', 'rate limit', '429', 'too many', '频率', '限流'))
+
+
+def create_doc(book_id, title, body, retries=4):
+    """创建语雀文档，返回 (doc_id, err)。限流时指数退避重试（3/6/12/24s）"""
+    for attempt in range(retries + 1):
+        data = mcporter_call('yuque_create_doc', {
+            'book_id': str(book_id), 'title': title, 'body': body,
+            'format': 'markdown', 'public': 0,
+        })
+        if isinstance(data, dict) and data.get('id'):
+            return data['id'], None
+        err = str(data)[:100]
+        if attempt < retries and _is_rate_limited(err):
+            wait = 3 * (2 ** attempt)
+            print(f"⏳ 限流 {title}，{wait}s 后重试 ({attempt + 1}/{retries})", flush=True)
+            time.sleep(wait)
+            continue
+        return None, err
+    return None, '重试耗尽'
 
 # ---------------------------------------------------------------- 进度
 def load_progress():
@@ -289,7 +303,7 @@ def main():
     ap.add_argument('--start', type=int, default=1)
     ap.add_argument('--end', type=int, default=0)
     ap.add_argument('--dry-run', action='store_true', help='只解析预览，不导入')
-    ap.add_argument('--interval', type=float, default=0.5, help='章节间隔秒数')
+    ap.add_argument('--interval', type=float, default=0, help='章节间隔秒数（默认 0，不等待；限流自动重试）')
     ap.add_argument('--no-toc-fix', action='store_true', help='导入完不修 TOC 顺序')
     args = ap.parse_args()
 
