@@ -194,37 +194,48 @@ def save_config(cfg):
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
-def mcporter_call(tool, args_dict, timeout=60):
-    """统一调 yuque-mcp，返回解析后的 JSON"""
+def mcporter_call(tool, args_dict, timeout=60, retries=1):
+    """统一调 yuque-mcp，返回解析后的 JSON。stdio 间歇启动失败时按 retries 重试（默认 1=不重试）"""
     args = json.dumps(args_dict, ensure_ascii=False)
-    result = subprocess.run(
-        ['mcporter', 'call', f'yuque-mcp.{tool}', '--args', args],
-        capture_output=True, text=True, timeout=timeout,
-        cwd=MCP_WORKDIR
-    )
-    output = result.stdout.strip() or result.stderr.strip()
-    try:
-        return json.loads(output)
-    except json.JSONDecodeError:
-        m = re.search(r'(\{.*\}|\[.*\])', output, re.S)
-        if m:
-            try:
-                return json.loads(m.group(1))
-            except json.JSONDecodeError:
-                pass
-        return None
+    for attempt in range(retries):
+        result = subprocess.run(
+            ['mcporter', 'call', f'yuque-mcp.{tool}', '--args', args],
+            capture_output=True, text=True, timeout=timeout,
+            cwd=MCP_WORKDIR
+        )
+        output = result.stdout.strip() or result.stderr.strip()
+        if os.environ.get('MC_DEBUG'):
+            print(f'[MC_DEBUG] {tool} args={args[:200]}', flush=True)
+            print(f'[MC_DEBUG] rc={result.returncode} out={output[:400]}', flush=True)
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError:
+            m = re.search(r'(\{.*\}|\[.*\])', output, re.S)
+            if m:
+                try:
+                    return json.loads(m.group(1))
+                except json.JSONDecodeError:
+                    pass
+        if attempt < retries - 1:
+            print(f"⚠️ {tool} 调用失败，重试 ({attempt + 1}/{retries - 1})", flush=True)
+            time.sleep(2)
+    if output:
+        print(f"❌ {tool} 重试耗尽，原始输出: {output[:300]}", flush=True)
+    return None
 
 
 def create_repo(name, description):
-    """创建语雀知识库，放入小说分组（stack_id 固定）"""
+    """创建语雀知识库，放入小说分组（stack_id 固定）。stdio 间歇失败时重试 4 次。description 超长会 400，截断到 200 字"""
     cfg = load_config()
     login = cfg.get('yuque_config', {}).get('user_login', 'yehuoshun')
+    if description:
+        description = re.sub(r'\s+', ' ', description).strip()[:200]
     data = mcporter_call('yuque_create_repo', {
         'login': login,
         'name': name,
         'description': description,
         'public': 0,
-    })
+    }, retries=4)
     repo_id = data.get('id') if isinstance(data, dict) else None
     if not repo_id:
         print(f"❌ 创建知识库失败: {str(data)[:200]}")
