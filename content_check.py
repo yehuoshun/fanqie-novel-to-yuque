@@ -7,7 +7,7 @@ import re
 MOJIBAKE_PATTERNS = [
     ('replacement-char', r'\ufffd'),                       # U+FFFD 替换符
     ('gbk-mojibake', r'锟斤拷'),                            # GBK→UTF8 经典乱码
-    ('stack-overflow', r'烫烫烫'),                          # 未初始化内存填充
+    ('stack-overflow', r'烫{5,}'),                          # 未初始化内存填充（正文台词"烫烫烫" 3连不算）
     ('latin1-garbage', r'Ã[\x80-\xff]'),                   # latin1 误读 UTF8 字节
     ('utf8-as-latin1', r'â€[\x9c\x9d\x9e\x9f\xa0-\xff]'),  # UTF8 按 latin1 读
     ('control-noise', r'[\x00-\x08\x0b\x0c\x0e-\x1f]'),    # 控制字符混入
