@@ -90,6 +90,7 @@ python3 txt_import.py --txt novel.txt --no-toc-fix
 | `txt_import.py` | **核心脚本**：解析（txt/epub）+ 上传语雀 + 进度管理 + 分批导入 |
 | `epub_reader.py` | EPUB 解析后端（container→OPF→spine→xhtml→章节，纯标准库） |
 | `yuque_import_workflow.py` | 工作流入口壳（转发到 `txt_import.py`） |
+| `test_reorder_retry.py` | reorder_toc 重试逻辑回归单测（不联网，monkeypatch 网络层） |
 | `reorder_toc.py` | TOC 章节顺序修复（从后往前修正错位文档） |
 | `config.json` | 配置文件（`yuque_repo_id` 和 `yuque_config.user_login`） |
 | `progress/` | 进度 + 章节列表目录（按知识库 ID 隔离：`progress_<book_id>.json` / `chapters_<book_id>.json`） |
@@ -131,6 +132,7 @@ A: 用 `--start 1 --end 100` 只导前 100 章，下次 `--start 101 --end 200` 
 
 - `reorder_toc.mcporter_call` 输出解析失败（stdio 启动抽风）自动重试，参数/权限类错误（`MCP error`）不重试直接失败
 - 单节点移动失败重试 3 轮（间隔 2s），耗尽才中止，不再一次抽风就丢半截活
+- 新增 `test_reorder_retry.py` 回归单测（5 项，不联网）
 
 ### 2026-09-27：新增 EPUB 支持
 
