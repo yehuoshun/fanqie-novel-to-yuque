@@ -127,6 +127,11 @@ A: 用 `--start 1 --end 100` 只导前 100 章，下次 `--start 101 --end 200` 
 - 章节列表从写死 `/tmp/chapter_list.json` 改为 `chapters_<book_id>.json`（`reorder_toc.py` 默认路径同步）
 - `MCP_WORKDIR` 改为环境变量可覆盖（默认仍为 workspace），换环境不用改代码
 
+### 2026-10-04：TOC 修复加重试
+
+- `reorder_toc.mcporter_call` 输出解析失败（stdio 启动抽风）自动重试，参数/权限类错误（`MCP error`）不重试直接失败
+- 单节点移动失败重试 3 轮（间隔 2s），耗尽才中止，不再一次抽风就丢半截活
+
 ### 2026-09-27：新增 EPUB 支持
 
 - 新增 `epub_reader.py`（纯标准库，零新依赖）

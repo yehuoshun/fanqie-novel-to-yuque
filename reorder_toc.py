@@ -37,29 +37,36 @@ def load_config():
     return cfg
 
 
-def mcporter_call(tool, args_dict, timeout=60):
-    """调 yuque-mcp 工具，返回解析后的 JSON（容忍 mcporter 输出前缀文本）"""
+def mcporter_call(tool, args_dict, timeout=60, retries=2):
+    """调 yuque-mcp 工具，返回解析后的 JSON（容忍 mcporter 输出前缀文本）。
+    stdio 启动偶发失败（空输出/解析失败）按 retries 重试；
+    参数/权限类错误（MCP error）不重试，直接失败。"""
     args = json.dumps(args_dict, ensure_ascii=False)
-    result = subprocess.run(
-        ['mcporter', 'call', f'yuque-mcp.{tool}', '--args', args],
-        capture_output=True, text=True, timeout=timeout,
-        cwd=MCP_WORKDIR
-    )
-    output = result.stdout.strip() or result.stderr.strip()
-    if 'MCP error' in output:
-        # MCP 参数校验失败时，错误信息里含参数 schema 的 JSON 数组，
-        # 正则兜底会误把它当成功结果解析（如 book_id 传 int → 0 个文档）
-        print(f"⚠️ mcporter 调用失败: {output[:200]}")
-        return None
-    try:
-        return json.loads(output)
-    except json.JSONDecodeError:
-        m = re.search(r'(\{.*\}|\[.*\])', output, re.S)
-        if m:
-            try:
-                return json.loads(m.group(1))
-            except json.JSONDecodeError:
-                pass
+    for attempt in range(retries + 1):
+        result = subprocess.run(
+            ['mcporter', 'call', f'yuque-mcp.{tool}', '--args', args],
+            capture_output=True, text=True, timeout=timeout,
+            cwd=MCP_WORKDIR
+        )
+        output = result.stdout.strip() or result.stderr.strip()
+        if 'MCP error' in output:
+            # MCP 参数校验失败时，错误信息里含参数 schema 的 JSON 数组，
+            # 正则兜底会误把它当成功结果解析（如 book_id 传 int → 0 个文档）
+            print(f"⚠️ mcporter 调用失败: {output[:200]}")
+            return None
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError:
+            m = re.search(r'(\{.*\}|\[.*\])', output, re.S)
+            if m:
+                try:
+                    return json.loads(m.group(1))
+                except json.JSONDecodeError:
+                    pass
+        if attempt < retries:
+            print(f"⚠️ mcporter 输出解析失败，重试 ({attempt + 1}/{retries}): {output[:150]}")
+            time.sleep(2)
+            continue
         print(f"⚠️ mcporter 输出解析失败: {output[:200]}")
         return None
 
@@ -163,17 +170,24 @@ def reorder(book_id, chapter_list_path, dry_run=False, verbose=True):
         print("(dry-run，未修改)")
         return False
 
-    # 逐个提交移动（节点移动有依赖，不批量）
+    # 逐个提交移动（节点移动有依赖，不批量）。
+    # 单个节点失败重试 3 轮（每轮调用自身 retries=1 防 stdio 抽风），耗尽才中止。
     for mv in moves:
         action = 'prependNode' if mv['position'] == 'before' else 'appendNode'
-        resp = mcporter_call('yuque_update_toc', {
-            'book_id': book_id,
-            'action': action,
-            'action_mode': 'sibling',
-            'node_uuid': mv['node_uuid'],
-            'target_uuid': mv['target_uuid'],
-        })
-        ok = isinstance(resp, dict) and 'data' in resp
+        ok = False
+        for attempt in range(3):
+            resp = mcporter_call('yuque_update_toc', {
+                'book_id': book_id,
+                'action': action,
+                'action_mode': 'sibling',
+                'node_uuid': mv['node_uuid'],
+                'target_uuid': mv['target_uuid'],
+            }, retries=1)
+            ok = isinstance(resp, dict) and 'data' in resp
+            if ok:
+                break
+            print(f"   ⚠️ 移动失败，重试 ({attempt + 1}/3): {str(resp)[:150]}")
+            time.sleep(2)
         print(f"   {'✅' if ok else '❌'} 移动: {mv['_title']}")
         if not ok:
             print(f"     响应: {str(resp)[:200]}")
