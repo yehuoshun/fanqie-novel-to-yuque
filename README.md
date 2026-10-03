@@ -92,7 +92,7 @@ python3 txt_import.py --txt novel.txt --no-toc-fix
 | `yuque_import_workflow.py` | 工作流入口壳（转发到 `txt_import.py`） |
 | `reorder_toc.py` | TOC 章节顺序修复（从后往前修正错位文档） |
 | `config.json` | 配置文件（`yuque_repo_id` 和 `yuque_config.user_login`） |
-| `progress/` | 进度文件目录（断点续传） |
+| `progress/` | 进度 + 章节列表目录（按知识库 ID 隔离：`progress_<book_id>.json` / `chapters_<book_id>.json`） |
 | `legacy/` | 废弃的番茄抓取脚本（`batch_import_final_v2.py`、`fanqie_tools.py`、`font_decoder.py`） |
 
 ## 注意事项
@@ -100,8 +100,8 @@ python3 txt_import.py --txt novel.txt --no-toc-fix
 - 章节切分基于正则匹配标题行，**确保 txt 中每章标题独占一行**
 - EPUB 走 `spine` 顺序，不支持 DRM 加密的 epub（加密文件在 `META-INF/encryption.xml`）
 - 默认每 0.5 秒上传一章（防限流），可通过 `--interval` 调整
-- 进度文件 `progress/txt_progress.json`，自动断点续传
-- 同一知识库导入第二本小说前，**需先手动清空进度文件**（或使用 `--start` 指定起始章）
+- 进度文件按知识库 ID 隔离（`progress/progress_<book_id>.json`），**不同库/不同书互不干扰，无需手动清进度**
+- 章节列表也按库隔离（`progress/chapters_<book_id>.json`），供 TOC 修复使用
 - TOC 修复只在全部章节导入完成后自动执行
 
 ## 常见问题
@@ -120,6 +120,12 @@ A: 重新跑同样的命令即可，脚本会读取进度文件跳过已导入�
 A: 用 `--start 1 --end 100` 只导前 100 章，下次 `--start 101 --end 200` 续。
 
 ## 更新记录
+
+### 2026-10-04：进度/章节列表按知识库隔离 + MCP_WORKDIR 可配置
+
+- 进度文件从单文件 `txt_progress.json` 改为按库隔离 `progress_<book_id>.json`，同一知识库导入多本书不再串章/漏章
+- 章节列表从写死 `/tmp/chapter_list.json` 改为 `chapters_<book_id>.json`（`reorder_toc.py` 默认路径同步）
+- `MCP_WORKDIR` 改为环境变量可覆盖（默认仍为 workspace），换环境不用改代码
 
 ### 2026-09-27：新增 EPUB 支持
 

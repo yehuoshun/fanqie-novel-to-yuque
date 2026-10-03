@@ -36,9 +36,8 @@ import content_check
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(PROJECT_DIR, 'config.json')
-MCP_WORKDIR = '/home/admin/.openclaw/workspace'
-CHAPTER_LIST = '/tmp/chapter_list.json'
-PROGRESS_FILE = os.path.join(PROJECT_DIR, 'progress', 'txt_progress.json')
+# mcporter 工作目录：默认 workspace，可用环境变量 MCP_WORKDIR 覆盖（换环境不用改代码）
+MCP_WORKDIR = os.environ.get('MCP_WORKDIR', '/home/admin/.openclaw/workspace')
 
 # 修正章节标题缺"章"字（如"第518 那个怪物"→"第518章 那个怪物"）
 _ZHANG_FIX_RE = re.compile(
@@ -300,19 +299,31 @@ def create_doc(book_id, title, body, retries=4):
     return None, '重试耗尽'
 
 # ---------------------------------------------------------------- 进度
-def load_progress():
-    if os.path.exists(PROGRESS_FILE):
+def _progress_path(book_id):
+    """进度文件路径：按知识库 ID 隔离（不同库/不同书互不干扰，不用手动清进度）"""
+    return os.path.join(PROJECT_DIR, 'progress', f'progress_{book_id}.json')
+
+
+def _chapter_list_path(book_id):
+    """章节列表路径：按知识库 ID 隔离（供 reorder_toc 使用，不再写死 /tmp）"""
+    return os.path.join(PROJECT_DIR, 'progress', f'chapters_{book_id}.json')
+
+
+def load_progress(book_id):
+    path = _progress_path(book_id)
+    if os.path.exists(path):
         try:
-            with open(PROGRESS_FILE, 'r') as f:
+            with open(path, 'r') as f:
                 return json.load(f)
         except Exception:
             pass
     return {"completed": [], "failed": []}
 
 
-def save_progress(p):
-    os.makedirs(os.path.dirname(PROGRESS_FILE), exist_ok=True)
-    with open(PROGRESS_FILE, 'w') as f:
+def save_progress(book_id, p):
+    path = _progress_path(book_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
         json.dump(p, f, ensure_ascii=False)
 
 # ---------------------------------------------------------------- 主流程
@@ -365,10 +376,6 @@ def main():
     print(f"   首章: {chapters[0][0]}")
     print(f"   末章: {chapters[-1][0]}")
 
-    # 写章节列表（兼容 reorder_toc）
-    with open(CHAPTER_LIST, 'w', encoding='utf-8') as f:
-        json.dump([[t, ''] for t, _ in chapters], f, ensure_ascii=False)
-
     # 内容预检：字数 / HTML 残留 / 乱码（只告警不阻断）
     precheck = content_check.analyze_chapters(chapters)
     if precheck['empty'] or precheck['short'] or precheck['html'] or precheck['moji']:
@@ -388,10 +395,6 @@ def main():
             print("❌ --create 需要 --title")
             sys.exit(1)
         # 新知识库 → 自动清旧进度（同一个库才续传，不同库不串）
-        progress_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), PROGRESS_FILE)
-        if os.path.exists(progress_path):
-            os.remove(progress_path)
-            print("🧹 新知识库，已清除旧进度文件")
         name = f"《{args.title}》"
         if args.alias:
             for a in args.alias.split('/'):
@@ -402,6 +405,11 @@ def main():
         book_id = create_repo(name, args.description)
         if not book_id:
             sys.exit(1)
+        # 新库确定后清掉该库可能残留的旧进度（按 book_id 隔离，不影响其他库）
+        progress_path = _progress_path(str(book_id))
+        if os.path.exists(progress_path):
+            os.remove(progress_path)
+            print("🧹 新知识库，已清除该库旧进度文件")
         cfg['yuque_repo_id'] = str(book_id)
         save_config(cfg)
         print(f"✅ config.json yuque_repo_id 已更新为 {book_id}")
@@ -411,11 +419,15 @@ def main():
             print("❌ 未指定知识库。用 --create --title 创建，或 --book-id 指定已有库")
             sys.exit(1)
 
+    # 写章节列表（兼容 reorder_toc，按 book_id 隔离路径，不再写死 /tmp）
+    with open(_chapter_list_path(str(book_id)), 'w', encoding='utf-8') as f:
+        json.dump([[t, ''] for t, _ in chapters], f, ensure_ascii=False)
+
     # 3. 分批上传
     start_idx = args.start - 1
     end_idx = args.end if args.end > 0 else total_all
     rng = chapters[start_idx:end_idx]
-    progress = load_progress()
+    progress = load_progress(str(book_id))
     completed = set(progress.get('completed', []))
     failed = set(progress.get('failed', []))
 
@@ -434,7 +446,7 @@ def main():
             print(f"[{abs_i}/{total_all}] {title} ❌ {e}", flush=True)
             failed.add(title)
             new_fail += 1
-            save_progress({"completed": list(completed), "failed": list(failed)})
+            save_progress(str(book_id), {"completed": list(completed), "failed": list(failed)})
             continue
         if doc_id:
             print(f"[{abs_i}/{total_all}] {title} ✅", flush=True)
@@ -445,10 +457,10 @@ def main():
             print(f"[{abs_i}/{total_all}] {title} ❌ {err[:60] if err else 'unknown'}", flush=True)
             failed.add(title)
             new_fail += 1
-        save_progress({"completed": list(completed), "failed": list(failed)})
+        save_progress(str(book_id), {"completed": list(completed), "failed": list(failed)})
         time.sleep(args.interval)
 
-    save_progress({"completed": list(completed), "failed": list(failed)})
+    save_progress(str(book_id), {"completed": list(completed), "failed": list(failed)})
     print(f"\n完成！新成功 {new_ok}，新失败 {new_fail}，累计成功 {len(completed)} / {total_all}")
 
     # 4. 全部导入完再修 TOC
@@ -457,7 +469,7 @@ def main():
     elif new_ok > 0 and len(completed) >= total_all:
         print("\n🔧 校验并修复 TOC 顺序...")
         from reorder_toc import reorder
-        reorder(book_id, CHAPTER_LIST)
+        reorder(book_id, _chapter_list_path(str(book_id)))
     else:
         print(f"\nℹ️ 尚有 {total_all - len(completed)} 章未完成，跳过 TOC 修复")
 

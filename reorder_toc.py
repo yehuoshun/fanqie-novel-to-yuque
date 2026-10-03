@@ -12,7 +12,7 @@ reorder_toc.py — 修复语雀知识库 TOC 章节顺序
 用法：
     python3 reorder_toc.py                # 修复 config 中 yuque_repo_id 的 TOC
     python3 reorder_toc.py --dry-run      # 只检查不修改
-    python3 reorder_toc.py --book-id 83437061 --chapter-list /tmp/chapter_list.json
+    python3 reorder_toc.py --book-id 83437061 --chapter-list progress/chapters_83437061.json
 
 可被 batch_import_final_v2.py 导入调用：from reorder_toc import reorder
 """
@@ -24,7 +24,7 @@ import subprocess
 import sys
 import time
 
-MCP_WORKDIR = '/home/admin/.openclaw/workspace'
+MCP_WORKDIR = os.environ.get('MCP_WORKDIR', '/home/admin/.openclaw/workspace')
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(PROJECT_DIR, 'config.json')
 
@@ -205,7 +205,9 @@ def main():
 
     cfg = load_config()
     book_id = args.book_id or cfg['yuque_repo_id']
-    chapter_list = args.chapter_list or '/tmp/chapter_list.json'
+    # 默认章节列表：progress/chapters_<book_id>.json（与 txt_import 写入路径一致）
+    default_chapters = os.path.join(PROJECT_DIR, 'progress', f'chapters_{book_id}.json')
+    chapter_list = args.chapter_list or default_chapters
 
     if not os.path.exists(chapter_list):
         print(f"❌ 章节列表不存在: {chapter_list}")
